@@ -17,10 +17,10 @@ public class WinCoreHandler : HandlerRuntimeBase
     int seqNo = 0;
     public override ExecuteResult Execute(HandlerStartInfo startInfo)
     {
-        XmlSerializer ser = new XmlSerializer(typeof(WorkflowParameters));
-        WorkflowParameters wfp = new WorkflowParameters();
+        XmlSerializer ser = new XmlSerializer(typeof(WinProcAdapterContainer));
+        WinProcAdapterContainer wfp = new WinProcAdapterContainer();
         TextReader reader = new StringReader(startInfo.Parameters);
-        wfp = (WorkflowParameters)ser.Deserialize(reader);
+        wfp = (WinProcAdapterContainer)ser.Deserialize(reader);
 
         Workflow wf = new Workflow(wfp);
 
