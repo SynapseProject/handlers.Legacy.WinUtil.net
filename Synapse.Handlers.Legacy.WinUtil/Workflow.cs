@@ -65,7 +65,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 		/// <summary>
 		/// Executes the main workflow.
 		/// </summary>
-		public void ExecuteAction()
+		public void ExecuteAction(bool isDryRun)
 		{
 			string context = "ExecuteAction";
 
@@ -89,17 +89,17 @@ namespace Synapse.Handlers.Legacy.WinCore
                     {
                         case ServiceType.Service:
                             {
-                                state = ManageService();
+                                state = ManageService(isDryRun);
                                 break;
                             }
                         case ServiceType.AppPool:
                             {
-                                state = ManageAppPool();
+                                state = ManageAppPool(isDryRun);
                                 break;
                             }
                         case ServiceType.ScheduledTask:
                             {
-                                state = ManageScheduledTask();
+                                state = ManageScheduledTask(isDryRun);
                                 break;
                             }
                     }
@@ -140,12 +140,18 @@ namespace Synapse.Handlers.Legacy.WinCore
 		}
 		#endregion
 
-		IProcessState ManageService()
+		IProcessState ManageService(bool isDryRun)
 		{
 			string context = "ManageService";
 
 			OnStepProgress( context, "Calling Service Action :[" + _wfp.Action + "]" );
-			switch( _wfp.Action )
+            if (isDryRun)
+            {
+                OnProgress(context, "IsDryRun Flag Is Set.  Service Action Will Be Query Only.", StatusType.Running, 0, _cheapSequence++, false, null);
+                _wfp.Action = ServiceAction.Query;
+            }
+
+            switch ( _wfp.Action )
 			{
 				case ServiceAction.Query:
 				{
@@ -185,13 +191,18 @@ namespace Synapse.Handlers.Legacy.WinCore
 			return ServiceUtil.QueryStatus( _wfp.TargetName, _wfp.ServerName );
 		}
 
-		IProcessState ManageAppPool()
+		IProcessState ManageAppPool(bool isDryRun)
 		{
 			string context = "ManageAppPool";
 
 			OnStepProgress( context, "Calling AppPool Action :[" + _wfp.Action + "]" );
+            if (isDryRun)
+            {
+                OnProgress(context, "IsDryRun Flag Is Set.  AppPool Action Will Be Query Only.", StatusType.Running, 0, _cheapSequence++, false, null);
+                _wfp.Action = ServiceAction.Query;
+            }
 
-			switch( _wfp.Action )
+            switch ( _wfp.Action )
 			{
 				case ServiceAction.Query:
 				{
@@ -217,12 +228,17 @@ namespace Synapse.Handlers.Legacy.WinCore
 			return AppPoolUtil.QueryStatus( _wfp.TargetName, false, _wfp.ServerName );
 		}
 
-		IProcessState ManageScheduledTask()
+		IProcessState ManageScheduledTask(bool isDryRun)
 		{
 			string context = "ManageScheduledTask";
 
-			OnStepProgress( context, "Calling Service Action :[" + _wfp.Action + "]" );
-			switch( _wfp.Action )
+			OnStepProgress( context, "Calling Scheduled Task Action :[" + _wfp.Action + "]" );
+            if (isDryRun)
+            {
+                OnProgress(context, "IsDryRun Flag Is Set.  Scheduled Task Action Will Be Query Only.", StatusType.Running, 0, _cheapSequence++, false, null);
+                _wfp.Action = ServiceAction.Query;
+            }
+            switch ( _wfp.Action )
 			{
 				case ServiceAction.Query:
 				{
