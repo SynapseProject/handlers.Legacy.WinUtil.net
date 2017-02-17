@@ -326,6 +326,11 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void UpdateConfigOriginals()
 		{
 			string context = "UpdateConfigOriginals";
+            if (_isDryRun)
+            {
+                context = "DryRun:UpdateConfigOriginals";
+                OnStepProgress(context, "DryRun Flag Is Set.  No Files Will Be Modified.");
+            }
 			string msg = Utils.GetHeaderMessage( "Updating original config files." );
 			if( OnStepStarting( context, msg ) )
 			{
@@ -344,7 +349,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					{
 						OnStepProgress( context,
 							string.Format( "Executing update on: BackupName:[{0}], OriginalName:[{1}]", cf.TransformOutFileFullPath, cf.TransformFileOriginalName ) );
-						File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
+                        if (!_isDryRun)
+                            File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
 					}
 					catch( Exception ex )
 					{
@@ -359,7 +365,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				{
 					try
 					{
-						File.Delete( Utils.PathCombine( Path.GetDirectoryName( Utils.PathCombine( _wfp.SourceDirectory, cf.Name ) ), cf.TransformOutFileName ) );
+                        if (!_isDryRun)
+                            File.Delete( Utils.PathCombine( Path.GetDirectoryName( Utils.PathCombine( _wfp.SourceDirectory, cf.Name ) ), cf.TransformOutFileName ) );
 					}
 					catch { /* If this fails, so be it - do nothing */ }
 				}
@@ -495,27 +502,36 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <param name="destination">The destination directory path.</param>
 		void RenameConfigsAtTartget(string destination)
 		{
-			//Rename each temp transformed file to the correct config file name
-			foreach( ConfigFile cf in _wfp.ConfigsWithTransformFiles )
+            String ctx = "UpdateConfigsAtTarget";
+            if (_isDryRun)
+            {
+                ctx = "DryRun:UpdateConfigsAtTarget";
+                OnStepProgress(ctx, "DryRun Flag Is Set.  Config Files Will NOT Be Renamed.");
+            }
+
+            //Rename each temp transformed file to the correct config file name
+            foreach ( ConfigFile cf in _wfp.ConfigsWithTransformFiles )
 			{
 				string destinationConfigName = Utils.PathCombine( destination, cf.Name );
 				string destinationConfigPath = Path.GetDirectoryName( destinationConfigName );
 				string destinationConfigBackupName = destinationConfigName + ".backup.original";
 				string transformedConfigTempName = Utils.PathCombine( destinationConfigPath, cf.TransformOutFileName );
 
-				try
-				{
-					//copy the untransformed "template" config to *.backup.original
-					File.Move( destinationConfigName, destinationConfigBackupName, MoveOptions.ReplaceExisting );
-				}
-				catch { /* If this fails, so be it - do nothing */ }
+                if (!_isDryRun)
+                {
+                    try
+                    {
+                        //copy the untransformed "template" config to *.backup.original
+                        File.Move(destinationConfigName, destinationConfigBackupName, MoveOptions.ReplaceExisting);
+                    }
+                    catch { /* If this fails, so be it - do nothing */ }
 
 
-				//copy the transformed file over the untransformed "template" config
-				File.Move( transformedConfigTempName, destinationConfigName, MoveOptions.ReplaceExisting );
+                    //copy the transformed file over the untransformed "template" config
+                    File.Move(transformedConfigTempName, destinationConfigName, MoveOptions.ReplaceExisting);
+                }
 
-				OnProgress( "UpdateConfigsAtTartget",
-					string.Format( "Overwrote config file: {0}  [with]  {1}", destinationConfigName, transformedConfigTempName ),
+				OnProgress( ctx, string.Format( "Overwrote config file: {0}  [with]  {1}", destinationConfigName, transformedConfigTempName ),
 					StatusType.Running, 0, _cheapSequence++, false, null );
 			}
 		}
@@ -717,7 +733,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		AggregateException DeleteManifestPathsContent(string rootPath)
 		{
 			string context = "DeleteManifest";
-			List<Exception> exceptions = new List<Exception>();
+            if (_isDryRun)
+            {
+                context = "DryRun:DeleteManifest";
+                OnStepProgress(context, "DryRun Flag Is Set.  Files Will NOT Be Deleted.");
+            }
+
+            List<Exception> exceptions = new List<Exception>();
 
 			string relPath = string.Empty;	//just for error reporting
 			string fullPath = string.Empty;
@@ -735,12 +757,14 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 							io.FileAttributes.Directory;
 						if( isDir )
 						{
-							DeleteFolder( fullPath, false );
+                            if (!_isDryRun)
+    							DeleteFolder( fullPath, false );
 						}
 						else
 						{
-							//true->ignoreReadOnly
-							File.Delete( fullPath, true, PathFormat.FullPath );
+							if (!_isDryRun)
+                                //true->ignoreReadOnly
+							    File.Delete( fullPath, true, PathFormat.FullPath );
 						}
 
 						OnStepProgress( context, string.Format( "Deleted: [{0}]", fullPath ) );
@@ -853,8 +877,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void MoveFolderContent(string source, string destination)
 		{
 			string context = "MoveFolderContent";
+            if (_isDryRun)
+            {
+                context = "DryRun:MoveFolderContent";
+                OnStepProgress(context, "Dry Run Flag Is Set.  No Files Will Be Moved.");
+            }
 
-			string msg = Utils.GetHeaderMessage(
+            string msg = Utils.GetHeaderMessage(
 				string.Format( "Moving content to next environment staging folder: [{0}  [to]  {1}]", source, destination ) );
 			if( OnStepStarting( context, msg ) )
 			{
@@ -873,18 +902,23 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
 					string dst = Utils.PathCombine( destination, folder );
 
-					//CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-					Directory.Copy( dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
-					//true->recursive, true->ignoreReadOnly
-					Directory.Delete( dir, true, true, PathFormat.FullPath );
+                    if (_isDryRun)
+                        OnStepProgress(context, "Moving Folder : " + dir + " To " + dst);
+                    else
+                    {
+                        //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
+                        Directory.Copy(dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath);
+                        //true->recursive, true->ignoreReadOnly
+                        Directory.Delete(dir, true, true, PathFormat.FullPath);
 
-					#region note from Steve: do not switch back to Directory.Move
-					//note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
-					//		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
-					//		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
-					//		as a Copy + Delete.  Original implementation was:
-					//Directory.Move( dir, dst,
-					//	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                        #region note from Steve: do not switch back to Directory.Move
+                        //note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
+                        //		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
+                        //		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
+                        //		as a Copy + Delete.  Original implementation was:
+                        //Directory.Move( dir, dst,
+                        //	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                    }
 					#endregion
 				}
 
@@ -892,8 +926,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				foreach( string file in files )
 				{
 					string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
-					File.Move( file, dst,
-						MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                    if (_isDryRun)
+                        OnStepProgress(context, "Moving File : " + file + " To " + dst);
+                    else
+                    {
+                        File.Move(file, dst,
+                        MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath);
+                    }
 				}
 
 				clock.Stop();
