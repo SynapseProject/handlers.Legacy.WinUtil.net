@@ -22,6 +22,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
         public Action<string, string, LogLevel, Exception> OnLogMessage;
         public Func<string, string, StatusType, long, int, bool, Exception, bool> OnProgress;
 
+        private bool _isDryRun = false;
+
         /// <summary>
         /// Default ctor
         /// </summary>
@@ -44,9 +46,10 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <summary>
 		/// Executes the main workflow of: Backup, UpdateConfigValues, CopyContent, MoveToNext.
 		/// </summary>
-		public void ExecuteAction()
+		public void ExecuteAction(bool isDryRun)
 		{
 			string context = "ExecuteAction";
+            _isDryRun = isDryRun;
 
 			string msg = Utils.GetHeaderMessage(
 				string.Format( "Synapse Legacy Handler, Standard Copy Process Handler. {0}, Entering Main Workflow.", Utils.GetBuildDateVersion() ) );
@@ -215,15 +218,20 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				if( File.Exists( sourceFile ) )
 				{
 					string destDir = Path.GetDirectoryName( destinationFile );
-					if( !Directory.Exists( destDir ) )
-					{
-						Directory.CreateDirectory( destDir );
-					}
+                    if (_isDryRun)
+                        OnProgress("DryRun:BackupContent", "Backing Up File : " + sourceFile + " To " + destinationFile, StatusType.Running, 0, _cheapSequence++, false, null);
+                    else
+                    {
+                        if (!Directory.Exists(destDir))
+                        {
+                            Directory.CreateDirectory(destDir);
+                        }
 
-					//CopyOptions.None->Allow overwrite if file exists in backup destination
-					//true->preserveDates
-					File.Copy( sourceFile, destinationFile,
-						CopyOptions.None, true, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                        //CopyOptions.None->Allow overwrite if file exists in backup destination
+                        //true->preserveDates
+                        File.Copy(sourceFile, destinationFile,
+                            CopyOptions.None, true, CopyMoveProgressHandler, null, PathFormat.FullPath);
+                    }
 				}
 			}
 		}
@@ -247,7 +255,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			foreach( ConfigFile cf in _wfp.ConfigsWithTransformFiles )
 			{
-				ExecuteXmlTransformation( _wfp.SourceDirectory, cf );
+  				ExecuteXmlTransformation( _wfp.SourceDirectory, cf );
 			}
 
 			clock.Stop();
@@ -265,8 +273,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <param name="configTempPath">Temp processing folder root [delete on exit?]</param>
 		void ExecuteXmlTransformation(string sourceFolderPath, ConfigFile cf)
 		{
-			OnStepProgress( "ExecuteXmlTransformation",
-				string.Format( "Executing XmlTransformation on [{0}] with [{1}]", cf.Name, cf.TransformFile ) );
+            if (_isDryRun)
+            {
+                OnStepProgress("DryRun:ExecuteXmlTransformation", string.Format("Executing XmlTransformation on [{0}] with [{1}]", cf.Name, cf.TransformFile));
+                return;     // Do Nothing
+            }
+            else
+                OnStepProgress("ExecuteXmlTransformation", string.Format("Executing XmlTransformation on [{0}] with [{1}]", cf.Name, cf.TransformFile));
 
 			string tempFileToSave = Path.GetRandomFileName();
 
@@ -424,7 +437,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					if( _wfp.CreateTargetServerPath &&
 						!Directory.Exists( serverDest, PathFormat.LongFullPath ) )
 					{
-						Directory.CreateDirectory( serverDest, PathFormat.LongFullPath );
+                        if (!_isDryRun)
+    						Directory.CreateDirectory( serverDest, PathFormat.LongFullPath );
 					}
 
 					StopServerProcesses( serverName );
@@ -516,49 +530,64 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 		void StopServices(string serverName, Service s)
 		{
-			OnStepProgress( "StopServices",
-				string.Format( "{0}: {1}, {2}, {3}", serverName, s.Name, s.StopTimeoutToTerminate, s.StartModeOnStop ) );
+            String ctx = "StopServices";
+            if (_isDryRun)
+            {
+                ctx = "DryRun:StopServices";
+                OnStepProgress(ctx, "DryRun Flag Is Set.  Services Will NOT Be Stopped.");
+            }
 
+			OnStepProgress( ctx, string.Format( "{0}: {1}, {2}, {3}", serverName, s.Name, s.StopTimeoutToTerminate, s.StartModeOnStop ) );
 			ServiceConfig sc = ServiceUtil.QueryStatus( s.Name, serverName );
 
-			if( sc.ProcessId > 0 )
-			{
-				//only cache the existing StartMode if it is not specified in the parms 
-				if( s.StartModeOnStart == ServiceStartMode.Unchanged )
-				{
-					s.StartModeOnStart = sc.StartMode;
-				}
-				ServiceUtil.Stop( s.Name, serverName, s.StopTimeoutToTerminate, s.StartModeOnStop );
-			}
+            if (!_isDryRun)
+            {
+                if (sc.ProcessId > 0)
+                {
+                    //only cache the existing StartMode if it is not specified in the parms 
+                    if (s.StartModeOnStart == ServiceStartMode.Unchanged)
+                    {
+                        s.StartModeOnStart = sc.StartMode;
+                    }
+                    ServiceUtil.Stop(s.Name, serverName, s.StopTimeoutToTerminate, s.StartModeOnStop);
+                }
 
-			if( s.Reprovision )
-			{
-				ServiceReturnCode result = ServiceUtil.DeleteService( s.Name, serverName );
+                if (s.Reprovision)
+                {
+                    ServiceReturnCode result = ServiceUtil.DeleteService(s.Name, serverName);
 
-				if( result != ServiceReturnCode.Success && result != ServiceReturnCode.ServiceNotFound )
-				{
-					throw new Exception( string.Format( "Could not delete service {0} on {1}.  Result: {2}",
-						s.Name, serverName, result ) );
-				}
-				else
-				{
-					string msg = result == ServiceReturnCode.ServiceNotFound ? "not found" : "successfully deleted";
-					OnStepProgress( "StopServices",
-						string.Format( "Reprovision = true, Service [{0}] {1}, proceeding.", s.Name, msg ) );
-				}
-			}
+                    if (result != ServiceReturnCode.Success && result != ServiceReturnCode.ServiceNotFound)
+                    {
+                        throw new Exception(string.Format("Could not delete service {0} on {1}.  Result: {2}",
+                            s.Name, serverName, result));
+                    }
+                    else
+                    {
+                        string msg = result == ServiceReturnCode.ServiceNotFound ? "not found" : "successfully deleted";
+                        OnStepProgress(ctx, string.Format("Reprovision = true, Service [{0}] {1}, proceeding.", s.Name, msg));
+                    }
+                }
 
-			sc = ServiceUtil.QueryStatus( s.Name, serverName );
-			OnStepProgress( "StopServices", sc.ToXml( false ) );
+                sc = ServiceUtil.QueryStatus(s.Name, serverName);
+            }
+			OnStepProgress( ctx, sc.ToXml( false ) );
 		}
 
 		void StopAppPools(string serverName, AppPool a)
 		{
-			OnStepProgress( "StopAppPools", string.Format( "{0}: {1}", serverName, a.Name ) );
-			AppPoolUtil.Stop( a.Name, serverName, 30000, 3, 30000 );
+            String ctx = "StopAppPools";
+            if (_isDryRun)
+            {
+                ctx = "DryRun:StopAppPools";
+                OnStepProgress(ctx, "DryRun Flag Is Set.  AppPools Will NOT Be Stopped.");
+            }
+
+            OnStepProgress( ctx, string.Format( "{0}: {1}", serverName, a.Name ) );
+            if (!_isDryRun)
+    			AppPoolUtil.Stop( a.Name, serverName, 30000, 3, 30000 );
 
 			AppPoolConfig ap = AppPoolUtil.QueryStatus( a.Name, false, serverName );
-			OnStepProgress( "StopAppPools", ap.ToXml( false ) );
+			OnStepProgress( ctx, ap.ToXml( false ) );
 		}
 
 		void StartServerProcesses(string serverName)
@@ -569,63 +598,77 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 		void StartServices(string serverName, Service s)
 		{
-			string msg = string.Format( "{0}: {1}", serverName, s.Name );
-			OnStepProgress( "StartServices",
-				string.Format( "{0}, StartModeOnStart: {1}, StartService: {2}", msg, s.StartModeOnStart, s.StartService ) );
+            String ctx = "StartServices";
+            if (_isDryRun)
+            {
+                ctx = "DryRun:StartServices";
+                OnStepProgress(ctx, "DryRun Flag Is Set.  Services Will NOT Be Started.");
+            }
 
-			if( s.Reprovision )
-			{
-				string servicePath = Utils.PathCombine( _wfp.TargetServerDestination, s.Path );
+            string msg = string.Format( "{0}: {1}", serverName, s.Name );
+			OnStepProgress( ctx, string.Format( "{0}, StartModeOnStart: {1}, StartService: {2}", msg, s.StartModeOnStart, s.StartService ) );
 
-				string password = null;
-				if( !string.IsNullOrWhiteSpace( s.Password ) )
-				{
-                    Cipher c = new Cipher(settings.Default.passwordPassPhrase, settings.Default.passwordSaltValue, settings.Default.passwordInitVector );
-					password = c.Decrypt( s.Password );
-					if( password.ToLower().StartsWith( "unable" ) )
-					{
-						throw new Exception( string.Format( "Unable to decrypt password for service configuration: {0}, {1}:[{2}]",
-							serverName, s.Name, servicePath ) );
-					}
-				}
+            if (!_isDryRun)
+            {
+                if (s.Reprovision)
+                {
+                    string servicePath = Utils.PathCombine(_wfp.TargetServerDestination, s.Path);
 
-				ServiceReturnCode result = ServiceUtil.CreateService( s.Name, serverName, s.Name, servicePath,
-					s.StartModeOnStart, s.UserName, password, s.Parameters );
-				if( result != ServiceReturnCode.Success )
-				{
-					throw new Exception( string.Format( "Could not create service [{0}] on {1}:[{2}] with {3}.  Result: {4}",
-						s.Name, serverName, servicePath, s.UserName, result ) );
-				}
-				else
-				{
-					OnStepProgress( "StartServices",
-						string.Format( "Reprovision = true, Service [{0}] on {1}:[{2}] with {3} successfully created.",
-						s.Name, serverName, servicePath, s.UserName ) );
-				}
-			}
+                    string password = null;
+                    if (!string.IsNullOrWhiteSpace(s.Password))
+                    {
+                        Cipher c = new Cipher(settings.Default.passwordPassPhrase, settings.Default.passwordSaltValue, settings.Default.passwordInitVector);
+                        password = c.Decrypt(s.Password);
+                        if (password.ToLower().StartsWith("unable"))
+                        {
+                            throw new Exception(string.Format("Unable to decrypt password for service configuration: {0}, {1}:[{2}]",
+                                serverName, s.Name, servicePath));
+                        }
+                    }
 
-			if( s.StartService )
-			{
-				ServiceUtil.Start( s.Name, serverName, s.StartTimeoutToMonitor, s.StartModeOnStart );
-			}
+                    ServiceReturnCode result = ServiceUtil.CreateService(s.Name, serverName, s.Name, servicePath,
+                        s.StartModeOnStart, s.UserName, password, s.Parameters);
+                    if (result != ServiceReturnCode.Success)
+                    {
+                        throw new Exception(string.Format("Could not create service [{0}] on {1}:[{2}] with {3}.  Result: {4}",
+                            s.Name, serverName, servicePath, s.UserName, result));
+                    }
+                    else
+                    {
+                        OnStepProgress(ctx, string.Format("Reprovision = true, Service [{0}] on {1}:[{2}] with {3} successfully created.",
+                            s.Name, serverName, servicePath, s.UserName));
+                    }
+                }
+
+                if (s.StartService)
+                {
+                    ServiceUtil.Start(s.Name, serverName, s.StartTimeoutToMonitor, s.StartModeOnStart);
+                }
+            }
 
 			ServiceConfig sc = ServiceUtil.QueryStatus( s.Name, serverName );
-			OnStepProgress( "StartServices", sc.ToXml( false ) );
+			OnStepProgress( ctx, sc.ToXml( false ) );
 		}
 
 		void StartAppPools(string serverName, AppPool a)
 		{
-			string msg = string.Format( "{0}: {1}", serverName, a.Name );
-			OnStepProgress( "StartAppPools",
-				string.Format( "{0}, StartPool: {1}", msg, a.StartPool ) );
+            String ctx = "StartAppPools";
+            if (_isDryRun)
+            {
+                ctx = "DryRun:StartAppPools";
+                OnStepProgress(ctx, "DryRun Flag Is Set.  AppPools Will NOT Be Started.");
+            }
 
-			if( a.StartPool )
+            string msg = string.Format( "{0}: {1}", serverName, a.Name );
+			OnStepProgress( ctx, string.Format( "{0}, StartPool: {1}", msg, a.StartPool ) );
+
+			if( a.StartPool && !_isDryRun)
 			{
 				AppPoolUtil.Start( a.Name, serverName, 10000 );
 			}
 
 			AppPoolConfig ap = AppPoolUtil.QueryStatus( a.Name, false, serverName );
-			OnStepProgress( "StartAppPools", ap.ToXml( false ) );
+			OnStepProgress( ctx, ap.ToXml( false ) );
 		}
 		#endregion 
 
@@ -733,6 +776,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <param name="enumerateChildrenForDelete">Pass true to delete only the children, false to delete the specified directory and all children.</param>
 		void DeleteFolder(string path, bool enumerateChildrenForDelete)
 		{
+            if (_isDryRun)
+                OnStepProgress("DryRun:DeleteFolder", "Dry Run Flag Is Set.  No Files Will Be Deleted.");
 			try
 			{
 				if( enumerateChildrenForDelete )
@@ -740,21 +785,30 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					string[] dirs = Directory.GetDirectories( path );
 					foreach( string dir in dirs )
 					{
-						//true->recursive, true->ignoreReadOnly
-						Directory.Delete( dir, true, true, PathFormat.FullPath );
+                        if (_isDryRun)
+                            OnStepProgress("DryRun:DeleteFolder", "Deleting Directory : " + dir);
+                        else
+                            //true->recursive, true->ignoreReadOnly
+                            Directory.Delete( dir, true, true, PathFormat.FullPath );
 					}
 
 					string[] files = Directory.GetFiles( path );
 					foreach( string file in files )
 					{
-						//true->ignoreReadOnly
-						File.Delete( file, true, PathFormat.FullPath );
+                        if (_isDryRun)
+                            OnStepProgress("DryRun:DeleteFolder", "Deleting File : " + file);
+                        else
+                            //true->ignoreReadOnly
+                            File.Delete( file, true, PathFormat.FullPath );
 					}
 				}
 				else
 				{
-					//true->recursive, true->ignoreReadOnly
-					Directory.Delete( path, true, true, PathFormat.FullPath );
+                    //true->recursive, true->ignoreReadOnly
+                    if (_isDryRun)
+                        OnStepProgress("DryRun:DeleteFolder", "Deleting Directory : " + path);
+                    else
+                        Directory.Delete( path, true, true, PathFormat.FullPath );
 				}
 			}
 			catch( Exception ex )
@@ -774,8 +828,14 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
 			try
 			{
-				//CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-				Directory.Copy( source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                if (_isDryRun)
+                {
+                    OnStepProgress("DryRun:CopyFolder", "DryRun Flag Is Set.  No Files Will Be Copied.");
+                    OnStepProgress("DryRun:CopyFolder", "Copying From : " + source + " To " + destination);
+                }
+                else
+                    //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
+                    Directory.Copy(source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath);
 			}
 			catch( Exception ex )
 			{

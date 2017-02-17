@@ -29,7 +29,7 @@ public class StandardCopyProcessHandler : HandlerRuntimeBase
 
         seqNo = 0;
         OnProgress("Execute", "Starting", StatusType.Running, startInfo.InstanceId, seqNo++);
-        wf.ExecuteAction();
+        wf.ExecuteAction(startInfo.IsDryRun);
 
         return new ExecuteResult() { Status = StatusType.Complete };
     }

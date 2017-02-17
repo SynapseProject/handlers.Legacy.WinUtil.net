@@ -71,10 +71,8 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Classes\AdapterProgressEventArgs.cs" />
     <Compile Include="Classes\AppPoolConfig.cs" />
     <Compile Include="Classes\IProcessState.cs" />
-    <Compile Include="Classes\PackageStatus.cs" />
     <Compile Include="Classes\ServiceNativeMethods.cs" />
     <Compile Include="Classes\ScheduledTaskConfig.cs" />
     <Compile Include="Classes\ServiceConfig.cs" />
