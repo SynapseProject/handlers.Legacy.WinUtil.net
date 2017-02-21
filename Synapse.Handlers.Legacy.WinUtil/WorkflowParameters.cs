@@ -112,41 +112,41 @@ namespace Synapse.Handlers.Legacy.WinCore
 		#endregion
 	}
 
-	[XmlRoot( "WinProcAdapter" )]
-	public class WinProcAdapterContainer : WorkflowParameters
+	[XmlRoot( "WinCore" )]
+	public class WinCoreContainer : WorkflowParameters
 	{
 		/// <summary>
 		/// default ctor
 		/// </summary>
-		public WinProcAdapterContainer() { }
+		public WinCoreContainer() { }
 
 		[XmlElement( "Tasks" )]
 		public WinProcTaskContainer winProcAdapter;
 
-		public new static WinProcAdapterContainer Deserialize(XmlElement el)
+		public new static WinCoreContainer Deserialize(XmlElement el)
 		{
-			XmlSerializer s = new XmlSerializer( typeof( WinProcAdapterContainer ) );
-			return (WinProcAdapterContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
+			XmlSerializer s = new XmlSerializer( typeof( WinCoreContainer ) );
+			return (WinCoreContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
 		}
 
-		public new static WinProcAdapterContainer Deserialize(string filePath)
+		public new static WinCoreContainer Deserialize(string filePath)
 		{
 			using( FileStream fs = new FileStream( filePath, FileMode.Open, FileAccess.Read ) )
 			{
-				XmlSerializer s = new XmlSerializer( typeof( WinProcAdapterContainer ) );
-				return (WinProcAdapterContainer)s.Deserialize( fs );
+				XmlSerializer s = new XmlSerializer( typeof( WinCoreContainer ) );
+				return (WinCoreContainer)s.Deserialize( fs );
 			}
 		}
 
 		public new string Serialize(bool indented = false)
 		{
-			return Utils.Serialize<WinProcAdapterContainer>( this, indented );
+			return Utils.Serialize<WinCoreContainer>( this, indented );
 		}
 
 		public new WorkflowParameters FromXmlElement(XmlElement el)
 		{
-			XmlSerializer s = new XmlSerializer( typeof( WinProcAdapterContainer ) );
-			return (WinProcAdapterContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
+			XmlSerializer s = new XmlSerializer( typeof( WinCoreContainer ) );
+			return (WinCoreContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
 		}
 	}
 }
