@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Xml;
 using System.Xml.Serialization;
+using System.Text.RegularExpressions;
 
 namespace Synapse.Handlers.Legacy.WinCore
 {
@@ -30,9 +31,14 @@ namespace Synapse.Handlers.Legacy.WinCore
 		{
 			return string.Format( "{1}  {0}  {1}", header, _lines );
 		}
+        public static string CompressXml(string xml)
+        {
+            string str = Regex.Replace(xml, @"(>\s*<)", @"><");
+            return str;
+        }
 
-		//stolen from Suplex.General.XmlUtils
-		public static string Serialize<T>(object data, bool indented = true, bool omitXmlDeclaration = true, bool omitXmlNamespace = true)
+        //stolen from Suplex.General.XmlUtils
+        public static string Serialize<T>(object data, bool indented = true, bool omitXmlDeclaration = true, bool omitXmlNamespace = true)
 		{
 			XmlWriterSettings settings = new XmlWriterSettings();
 			settings.OmitXmlDeclaration = omitXmlDeclaration;

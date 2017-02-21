@@ -46,10 +46,10 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <summary>
 		/// Executes the main workflow of: Backup, UpdateConfigValues, CopyContent, MoveToNext.
 		/// </summary>
-		public void ExecuteAction(bool isDryRun)
+		public void ExecuteAction(HandlerStartInfo startInfo)
 		{
 			string context = "ExecuteAction";
-            _isDryRun = isDryRun;
+            _isDryRun = startInfo.IsDryRun;
 
 			string msg = Utils.GetHeaderMessage(
 				string.Format( "Synapse Legacy Handler, Standard Copy Process Handler. {0}, Entering Main Workflow.", Utils.GetBuildDateVersion() ) );
@@ -57,6 +57,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			{
 				return;
 			}
+
+            OnStepProgress("ExecuteAction", Utils.CompressXml(startInfo.Parameters));
 
             Stopwatch clock = new Stopwatch();
             clock.Start();

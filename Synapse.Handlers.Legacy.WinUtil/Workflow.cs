@@ -65,7 +65,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 		/// <summary>
 		/// Executes the main workflow.
 		/// </summary>
-		public void ExecuteAction(bool isDryRun)
+		public void ExecuteAction(HandlerStartInfo startInfo)
 		{
 			string context = "ExecuteAction";
 
@@ -74,6 +74,8 @@ namespace Synapse.Handlers.Legacy.WinCore
 			{
 				return;
 			}
+
+            OnStepProgress("ExecuteAction", Utils.CompressXml(startInfo.Parameters));
 
             Stopwatch clock = new Stopwatch();
             clock.Start();
@@ -89,17 +91,17 @@ namespace Synapse.Handlers.Legacy.WinCore
                     {
                         case ServiceType.Service:
                             {
-                                state = ManageService(isDryRun);
+                                state = ManageService(startInfo.IsDryRun);
                                 break;
                             }
                         case ServiceType.AppPool:
                             {
-                                state = ManageAppPool(isDryRun);
+                                state = ManageAppPool(startInfo.IsDryRun);
                                 break;
                             }
                         case ServiceType.ScheduledTask:
                             {
-                                state = ManageScheduledTask(isDryRun);
+                                state = ManageScheduledTask(startInfo.IsDryRun);
                                 break;
                             }
                     }

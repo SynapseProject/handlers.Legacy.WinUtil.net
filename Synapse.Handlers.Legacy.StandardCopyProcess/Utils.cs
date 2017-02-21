@@ -1,8 +1,13 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Reflection;
+using System.IO;
+using System.Text;
+using System.Xml;
+using System.Xml.Serialization;
+using System.Text.RegularExpressions;
 
-using Alphaleonis.Win32.Filesystem;
+using fs = Alphaleonis.Win32.Filesystem;
 
 namespace Synapse.Handlers.Legacy.StandardCopyProcess
 {
@@ -11,7 +16,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		const string _lines = "--------------------------";
 		public static string GetServerLongPath(string server, string localServerPath)
 		{
-			return Path.GetLongPath( "\\\\" + server + "\\" + localServerPath.Replace( ':', '$' ) );
+			return fs.Path.GetLongPath( "\\\\" + server + "\\" + localServerPath.Replace( ':', '$' ) );
 		}
 
 		public static double ElapsedSeconds(this Stopwatch stopwatch)
@@ -34,6 +39,12 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			return string.Format( "{1}  {0}  {1}", header, _lines );
 		}
 
+        public static string CompressXml(string xml)
+        {
+            string str = Regex.Replace(xml, @"(>\s*<)", @"><");
+            return str;
+        }
+
 		/// <summary>
 		/// A wrapper on Path.Combine to correct for fronting/trailing backslashes that otherwise fail in Path.Combine.
 		/// </summary>
@@ -48,7 +59,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				{
 					if( c != 0 )
 					{
-						paths[c] = paths[c].Trim( Path.DirectorySeparatorChar );
+						paths[c] = paths[c].Trim( fs.Path.DirectorySeparatorChar );
 					}
 					if( c != last )
 					{
@@ -61,7 +72,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				return string.Empty;
 			}
 
-			return Path.Combine( paths );
+			return fs.Path.Combine( paths );
 		}
 
 		//http://stackoverflow.com/questions/1600962/displaying-the-build-date
@@ -70,7 +81,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
 			Assembly assm = Assembly.GetExecutingAssembly();
 			Version version = assm.GetName().Version;
-			DateTime buildDateTime = new FileInfo( assm.Location ).LastWriteTime;
+			DateTime buildDateTime = new fs.FileInfo( assm.Location ).LastWriteTime;
 
 			return string.Format( "Version: {0}, Build DateTime: {1}", version, buildDateTime );
 
@@ -78,5 +89,33 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 //			return string.Format( "{0}.{1}.{2}.{3}", version.Major, version.Minor, buildDateTime.ToString( "yy" ), buildDateTime.DayOfYear.ToString( "D3" ) );
 		}
 
-	}
+        //stolen from Suplex.General.XmlUtils
+        public static string Serialize<T>(object data, bool indented = true, bool omitXmlDeclaration = true, bool omitXmlNamespace = true)
+        {
+            XmlWriterSettings settings = new XmlWriterSettings();
+            settings.OmitXmlDeclaration = omitXmlDeclaration;
+            settings.ConformanceLevel = ConformanceLevel.Auto;
+            settings.CloseOutput = false;
+            settings.Encoding = Encoding.Unicode;
+            settings.Indent = indented;
+
+            MemoryStream ms = new MemoryStream();
+            XmlSerializer s = new XmlSerializer(typeof(T));
+            XmlWriter w = XmlWriter.Create(ms, settings);
+            if (omitXmlNamespace)
+            {
+                XmlSerializerNamespaces ns = new XmlSerializerNamespaces();
+                ns.Add("", "");
+                s.Serialize(w, data, ns);
+            }
+            else
+            {
+                s.Serialize(w, data);
+            }
+            string result = Encoding.Unicode.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+            w.Close();
+            return result;
+        }
+
+    }
 }

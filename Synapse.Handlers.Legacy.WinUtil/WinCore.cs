@@ -14,7 +14,6 @@ using Synapse.Core;
 
 public class WinCoreHandler : HandlerRuntimeBase
 {
-    int seqNo = 0;
     public override ExecuteResult Execute(HandlerStartInfo startInfo)
     {
         XmlSerializer ser = new XmlSerializer(typeof(WinCoreContainer));
@@ -27,9 +26,7 @@ public class WinCoreHandler : HandlerRuntimeBase
         wf.OnLogMessage = this.OnLogMessage;
         wf.OnProgress = this.OnProgress;
 
-        seqNo = 0;
-        OnProgress("Execute", "Starting", StatusType.Running, startInfo.InstanceId, seqNo++);
-        wf.ExecuteAction(startInfo.IsDryRun);
+        wf.ExecuteAction(startInfo);
 
         return new ExecuteResult() { Status = StatusType.Complete };
     }

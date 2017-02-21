@@ -277,7 +277,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			w.Close();
 		}
 
-		public static WorkflowParameters Deserialize(string filePath)
+        public string Serialize(bool indented = false)
+        {
+            return Utils.Serialize<WorkflowParameters>(this, indented);
+        }
+
+
+        public static WorkflowParameters Deserialize(string filePath)
 		{
 			using( io.FileStream fs = new io.FileStream( filePath, io.FileMode.Open, io.FileAccess.Read ) )
 			{
