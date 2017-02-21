@@ -38,7 +38,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 		/// Initializes parameters.
 		/// </summary>
 		/// <param name="parameters">Initializes Parameters.</param>
-		public Workflow(WinProcAdapterContainer wpac)
+		public Workflow(WinCoreContainer wpac)
 		{
 			_wfp = wpac.winProcAdapter.tasks;
 		}
@@ -51,9 +51,9 @@ namespace Synapse.Handlers.Legacy.WinCore
 			get { return _wfp; }
 			set
 			{
-				if( value is WinProcAdapterContainer )
+				if( value is WinCoreContainer )
 				{
-					_wfp = ((WinProcAdapterContainer)value).winProcAdapter.tasks;
+					_wfp = ((WinCoreContainer)value).winProcAdapter.tasks;
 				}
 				else
 				{

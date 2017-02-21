@@ -11,7 +11,7 @@ using Synapse.Handlers.Legacy.WinCore;
 
 namespace Synapse.Handlers.Legacy.StandardCopyProcess
 {
-	[Serializable, XmlRoot( "DeliveranceAdapter" )]
+	[Serializable, XmlRoot( "StandardCopy" )]
 	public class WorkflowParameters
 	{
 		/// <summary>
