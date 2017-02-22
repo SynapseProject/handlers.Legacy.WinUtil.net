@@ -19,10 +19,9 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 	public class Workflow
 	{
 		WorkflowParameters _wfp = null;
+        HandlerStartInfo _startInfo = null;
         public Action<string, string, LogLevel, Exception> OnLogMessage;
         public Func<string, string, StatusType, long, int, bool, Exception, bool> OnProgress;
-
-        private bool _isDryRun = false;
 
         /// <summary>
         /// Default ctor
@@ -49,7 +48,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		public void ExecuteAction(HandlerStartInfo startInfo)
 		{
 			string context = "ExecuteAction";
-            _isDryRun = startInfo.IsDryRun;
+            _startInfo = startInfo;
 
 			string msg = Utils.GetHeaderMessage(
 				string.Format( "Synapse Legacy Handler, Standard Copy Process Handler. {0}, Entering Main Workflow.", Utils.GetBuildDateVersion() ) );
@@ -102,7 +101,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
             msg = Utils.GetHeaderMessage(string.Format("End Main Workflow: {0}, Total Execution Time: {1}",
                 ok ? "Complete." : "One or more steps failed.", clock.ElapsedSeconds()));
-            OnProgress(context, msg, status, 0, int.MaxValue, false, ex);
+            OnProgress(context, msg, status, _startInfo.InstanceId, int.MaxValue, false, ex);
 
         }
 
@@ -220,8 +219,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				if( File.Exists( sourceFile ) )
 				{
 					string destDir = Path.GetDirectoryName( destinationFile );
-                    if (_isDryRun)
-                        OnProgress("DryRun:BackupContent", "Backing Up File : " + sourceFile + " To " + destinationFile, StatusType.Running, 0, _cheapSequence++, false, null);
+                    if (_startInfo.IsDryRun)
+                        OnProgress("DryRun:BackupContent", "Backing Up File : " + sourceFile + " To " + destinationFile, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
                     else
                     {
                         if (!Directory.Exists(destDir))
@@ -275,7 +274,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <param name="configTempPath">Temp processing folder root [delete on exit?]</param>
 		void ExecuteXmlTransformation(string sourceFolderPath, ConfigFile cf)
 		{
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 OnStepProgress("DryRun:ExecuteXmlTransformation", string.Format("Executing XmlTransformation on [{0}] with [{1}]", cf.Name, cf.TransformFile));
                 return;     // Do Nothing
@@ -316,7 +315,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			catch( Exception ex )
 			{
 				string msg = string.Format( "ExecuteXmlTransformation failed on: configFile:[{0}], transformFileName:[{1}]", cf.TransformFileOriginalName, cf.TransformFile );
-                OnProgress(msg, ex.Message, StatusType.Running, 0, _cheapSequence++, false, ex);
+                OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
 		}
@@ -328,7 +327,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void UpdateConfigOriginals()
 		{
 			string context = "UpdateConfigOriginals";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 context = "DryRun:UpdateConfigOriginals";
                 OnStepProgress(context, "DryRun Flag Is Set.  No Files Will Be Modified.");
@@ -351,13 +350,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					{
 						OnStepProgress( context,
 							string.Format( "Executing update on: BackupName:[{0}], OriginalName:[{1}]", cf.TransformOutFileFullPath, cf.TransformFileOriginalName ) );
-                        if (!_isDryRun)
+                        if (!_startInfo.IsDryRun)
                             File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
 					}
 					catch( Exception ex )
 					{
 						msg = string.Format( "UpdateConfigOriginals failed on: BackupName:[{0}], OriginalName:[{1}]", cf.TransformOutFileFullPath, cf.TransformFileOriginalName );
-                        OnProgress(msg, ex.Message, StatusType.Running, 0, _cheapSequence++, false, ex);
+                        OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 						throw ex;
 					}
 				}
@@ -367,7 +366,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				{
 					try
 					{
-                        if (!_isDryRun)
+                        if (!_startInfo.IsDryRun)
                             File.Delete( Utils.PathCombine( Path.GetDirectoryName( Utils.PathCombine( _wfp.SourceDirectory, cf.Name ) ), cf.TransformOutFileName ) );
 					}
 					catch { /* If this fails, so be it - do nothing */ }
@@ -446,7 +445,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					if( _wfp.CreateTargetServerPath &&
 						!Directory.Exists( serverDest, PathFormat.LongFullPath ) )
 					{
-                        if (!_isDryRun)
+                        if (!_startInfo.IsDryRun)
     						Directory.CreateDirectory( serverDest, PathFormat.LongFullPath );
 					}
 
@@ -492,7 +491,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			catch( Exception ex )
 			{
 				msg = string.Format( "CopyContent failed on: serverName:[{0}]", serverName );
-                OnProgress(msg, ex.Message, StatusType.Running, 0, _cheapSequence++, false, ex);
+                OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
 		}
@@ -505,7 +504,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void RenameConfigsAtTartget(string destination)
 		{
             String ctx = "UpdateConfigsAtTarget";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 ctx = "DryRun:UpdateConfigsAtTarget";
                 OnStepProgress(ctx, "DryRun Flag Is Set.  Config Files Will NOT Be Renamed.");
@@ -519,7 +518,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				string destinationConfigBackupName = destinationConfigName + ".backup.original";
 				string transformedConfigTempName = Utils.PathCombine( destinationConfigPath, cf.TransformOutFileName );
 
-                if (!_isDryRun)
+                if (!_startInfo.IsDryRun)
                 {
                     try
                     {
@@ -534,7 +533,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                 }
 
 				OnProgress( ctx, string.Format( "Overwrote config file: {0}  [with]  {1}", destinationConfigName, transformedConfigTempName ),
-					StatusType.Running, 0, _cheapSequence++, false, null );
+					StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null );
 			}
 		}
 		#endregion
@@ -549,7 +548,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void StopServices(string serverName, Service s)
 		{
             String ctx = "StopServices";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 ctx = "DryRun:StopServices";
                 OnStepProgress(ctx, "DryRun Flag Is Set.  Services Will NOT Be Stopped.");
@@ -558,7 +557,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			OnStepProgress( ctx, string.Format( "{0}: {1}, {2}, {3}", serverName, s.Name, s.StopTimeoutToTerminate, s.StartModeOnStop ) );
 			ServiceConfig sc = ServiceUtil.QueryStatus( s.Name, serverName );
 
-            if (!_isDryRun)
+            if (!_startInfo.IsDryRun)
             {
                 if (sc.ProcessId > 0)
                 {
@@ -594,14 +593,14 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void StopAppPools(string serverName, AppPool a)
 		{
             String ctx = "StopAppPools";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 ctx = "DryRun:StopAppPools";
                 OnStepProgress(ctx, "DryRun Flag Is Set.  AppPools Will NOT Be Stopped.");
             }
 
             OnStepProgress( ctx, string.Format( "{0}: {1}", serverName, a.Name ) );
-            if (!_isDryRun)
+            if (!_startInfo.IsDryRun)
     			AppPoolUtil.Stop( a.Name, serverName, 30000, 3, 30000 );
 
 			AppPoolConfig ap = AppPoolUtil.QueryStatus( a.Name, false, serverName );
@@ -617,7 +616,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void StartServices(string serverName, Service s)
 		{
             String ctx = "StartServices";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 ctx = "DryRun:StartServices";
                 OnStepProgress(ctx, "DryRun Flag Is Set.  Services Will NOT Be Started.");
@@ -626,7 +625,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
             string msg = string.Format( "{0}: {1}", serverName, s.Name );
 			OnStepProgress( ctx, string.Format( "{0}, StartModeOnStart: {1}, StartService: {2}", msg, s.StartModeOnStart, s.StartService ) );
 
-            if (!_isDryRun)
+            if (!_startInfo.IsDryRun)
             {
                 if (s.Reprovision)
                 {
@@ -671,7 +670,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void StartAppPools(string serverName, AppPool a)
 		{
             String ctx = "StartAppPools";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 ctx = "DryRun:StartAppPools";
                 OnStepProgress(ctx, "DryRun Flag Is Set.  AppPools Will NOT Be Started.");
@@ -680,7 +679,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
             string msg = string.Format( "{0}: {1}", serverName, a.Name );
 			OnStepProgress( ctx, string.Format( "{0}, StartPool: {1}", msg, a.StartPool ) );
 
-			if( a.StartPool && !_isDryRun)
+			if( a.StartPool && !_startInfo.IsDryRun)
 			{
 				AppPoolUtil.Start( a.Name, serverName, 10000 );
 			}
@@ -704,7 +703,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				string[] files = userData.ToString().Split( '|' );
 				OnProgress( "CopyMoveProgress",
 					string.Format( "Copied file: {0}  [to]  {1}", files[0], files[1] ),
-					StatusType.Running, 0, _cheapSequence++, false, null );
+					StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null );
 			}
 
 			return CopyMoveProgressResult.Continue;
@@ -723,7 +722,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			catch( Exception ex )
 			{
 				string msg = string.Format( "TruncateTargetDirectory failed on: targetPath:[{0}]", targetPath );
-                OnProgress(msg, ex.Message, StatusType.Running, 0, _cheapSequence++, false, ex);
+                OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
 		}
@@ -735,7 +734,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		AggregateException DeleteManifestPathsContent(string rootPath)
 		{
 			string context = "DeleteManifest";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 context = "DryRun:DeleteManifest";
                 OnStepProgress(context, "DryRun Flag Is Set.  Files Will NOT Be Deleted.");
@@ -759,12 +758,12 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 							io.FileAttributes.Directory;
 						if( isDir )
 						{
-                            if (!_isDryRun)
+                            if (!_startInfo.IsDryRun)
     							DeleteFolder( fullPath, false );
 						}
 						else
 						{
-							if (!_isDryRun)
+							if (!_startInfo.IsDryRun)
                                 //true->ignoreReadOnly
 							    File.Delete( fullPath, true, PathFormat.FullPath );
 						}
@@ -780,7 +779,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					string msg = string.Format( "{0}: DeleteManifestPaths failed on: [{1}], relativePath [{2}].  Exception: {3}",
 						errType, fullPath, relPath, ex.Message );
 					OnProgress( string.Format( "{0}:{1}", context, errType ),
-						msg, StatusType.Running, 0, _cheapSequence++, false, null ); //warn ? null : ex
+						msg, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null ); //warn ? null : ex
 					exceptions.Add( new Exception( msg, ex ) );
 				}
 			}
@@ -802,7 +801,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <param name="enumerateChildrenForDelete">Pass true to delete only the children, false to delete the specified directory and all children.</param>
 		void DeleteFolder(string path, bool enumerateChildrenForDelete)
 		{
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
                 OnStepProgress("DryRun:DeleteFolder", "Dry Run Flag Is Set.  No Files Will Be Deleted.");
 			try
 			{
@@ -811,7 +810,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					string[] dirs = Directory.GetDirectories( path );
 					foreach( string dir in dirs )
 					{
-                        if (_isDryRun)
+                        if (_startInfo.IsDryRun)
                             OnStepProgress("DryRun:DeleteFolder", "Deleting Directory : " + dir);
                         else
                             //true->recursive, true->ignoreReadOnly
@@ -821,7 +820,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					string[] files = Directory.GetFiles( path );
 					foreach( string file in files )
 					{
-                        if (_isDryRun)
+                        if (_startInfo.IsDryRun)
                             OnStepProgress("DryRun:DeleteFolder", "Deleting File : " + file);
                         else
                             //true->ignoreReadOnly
@@ -831,7 +830,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				else
 				{
                     //true->recursive, true->ignoreReadOnly
-                    if (_isDryRun)
+                    if (_startInfo.IsDryRun)
                         OnStepProgress("DryRun:DeleteFolder", "Deleting Directory : " + path);
                     else
                         Directory.Delete( path, true, true, PathFormat.FullPath );
@@ -840,7 +839,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			catch( Exception ex )
 			{
 				string msg = string.Format( "DeleteFolder failed on: path:[{0}], enumerateChildrenForDelete:[{1}]", path, enumerateChildrenForDelete );
-                OnProgress(msg, ex.Message, StatusType.Running, 0, _cheapSequence++, false, ex);
+                OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
 		}
@@ -854,7 +853,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
 			try
 			{
-                if (_isDryRun)
+                if (_startInfo.IsDryRun)
                 {
                     OnStepProgress("DryRun:CopyFolder", "DryRun Flag Is Set.  No Files Will Be Copied.");
                     OnStepProgress("DryRun:CopyFolder", "Copying From : " + source + " To " + destination);
@@ -866,7 +865,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			catch( Exception ex )
 			{
 				string msg = string.Format( "CopyFolder failed on: source:[{0}], destination:[{1}]", source, destination );
-                OnProgress(msg, ex.Message, StatusType.Running, 0, _cheapSequence++, false, ex);
+                OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
 		}
@@ -879,7 +878,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		void MoveFolderContent(string source, string destination)
 		{
 			string context = "MoveFolderContent";
-            if (_isDryRun)
+            if (_startInfo.IsDryRun)
             {
                 context = "DryRun:MoveFolderContent";
                 OnStepProgress(context, "Dry Run Flag Is Set.  No Files Will Be Moved.");
@@ -904,7 +903,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
 					string dst = Utils.PathCombine( destination, folder );
 
-                    if (_isDryRun)
+                    if (_startInfo.IsDryRun)
                         OnStepProgress(context, "Moving Folder : " + dir + " To " + dst);
                     else
                     {
@@ -928,7 +927,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				foreach( string file in files )
 				{
 					string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
-                    if (_isDryRun)
+                    if (_startInfo.IsDryRun)
                         OnStepProgress(context, "Moving File : " + file + " To " + dst);
                     else
                     {
@@ -945,7 +944,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			catch( Exception ex )
 			{
 				msg = string.Format( "MoveFolderContent failed on: source:[{0}], destination:[{1}]", source, destination );
-                OnProgress(msg, ex.Message, StatusType.Running, 0, _cheapSequence++, false, ex);
+                OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
 		}
@@ -963,7 +962,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <returns>AdapterProgressCancelEventArgs.Cancel value.</returns>
 		bool OnStepStarting(string context, string message)
 		{
-            OnProgress(context, message, StatusType.Running, 0, _cheapSequence++, false, null);
+            OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 			return false;
 		}
 
@@ -975,7 +974,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <param name="message">Descriptive message.</param>
 		void OnStepProgress(string context, string message)
 		{
-            OnProgress(context, message, StatusType.Running, 0, _cheapSequence++, false, null);
+            OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 		}
 
 		/// <summary>
@@ -986,7 +985,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// <param name="message">Descriptive message.</param>
 		void OnStepFinished(string context, string message)
 		{
-            OnProgress(context, message, StatusType.Running, 0, _cheapSequence++, false, null);
+            OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 		}
 		#endregion
 	}

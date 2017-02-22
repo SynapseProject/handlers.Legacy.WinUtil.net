@@ -8,6 +8,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 	public class Workflow
 	{
 		WorkflowParameters _wfp = null;
+        HandlerStartInfo _startInfo = null;
         public Action<string, string, LogLevel, Exception> OnLogMessage;
         public Func<string, string, StatusType, long, int, bool, Exception, bool> OnProgress;
 
@@ -68,6 +69,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 		public void ExecuteAction(HandlerStartInfo startInfo)
 		{
 			string context = "ExecuteAction";
+            _startInfo = startInfo;
 
 			string msg = Utils.GetHeaderMessage( string.Format( "Entering Main Workflow." ) );
 			if( OnStepStarting( context, msg ) )
@@ -122,7 +124,7 @@ namespace Synapse.Handlers.Legacy.WinCore
             }
 
             bool ok = ex == null;
-            OnProgress(context, state.State, ok ? StatusType.Complete : StatusType.Failed, 0, int.MaxValue, false, ex);
+            OnProgress(context, state.State, ok ? StatusType.Complete : StatusType.Failed, _startInfo.InstanceId, int.MaxValue, false, ex);
 
         }
 
@@ -149,7 +151,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 			OnStepProgress( context, "Calling Service Action :[" + _wfp.Action + "]" );
             if (isDryRun)
             {
-                OnProgress(context, "IsDryRun Flag Is Set.  Service Action Will Be Query Only.", StatusType.Running, 0, _cheapSequence++, false, null);
+                OnProgress(context, "IsDryRun Flag Is Set.  Service Action Will Be Query Only.", StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
                 _wfp.Action = ServiceAction.Query;
             }
 
@@ -200,7 +202,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 			OnStepProgress( context, "Calling AppPool Action :[" + _wfp.Action + "]" );
             if (isDryRun)
             {
-                OnProgress(context, "IsDryRun Flag Is Set.  AppPool Action Will Be Query Only.", StatusType.Running, 0, _cheapSequence++, false, null);
+                OnProgress(context, "IsDryRun Flag Is Set.  AppPool Action Will Be Query Only.", StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
                 _wfp.Action = ServiceAction.Query;
             }
 
@@ -237,7 +239,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 			OnStepProgress( context, "Calling Scheduled Task Action :[" + _wfp.Action + "]" );
             if (isDryRun)
             {
-                OnProgress(context, "IsDryRun Flag Is Set.  Scheduled Task Action Will Be Query Only.", StatusType.Running, 0, _cheapSequence++, false, null);
+                OnProgress(context, "IsDryRun Flag Is Set.  Scheduled Task Action Will Be Query Only.", StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
                 _wfp.Action = ServiceAction.Query;
             }
             switch ( _wfp.Action )
@@ -281,7 +283,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 		/// <returns>AdapterProgressCancelEventArgs.Cancel value.</returns>
 		bool OnStepStarting(string context, string message)
 		{
-            OnProgress(context, message, StatusType.Running, 0, _cheapSequence++, false, null);
+            OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 			return false;
 		}
 
@@ -293,7 +295,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 		/// <param name="message">Descriptive message.</param>
 		void OnStepProgress(string context, string message)
 		{
-            OnProgress(context, message, StatusType.Running, 0, _cheapSequence++, false, null);
+            OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 		}
 
 		/// <summary>
@@ -304,7 +306,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 		/// <param name="message">Descriptive message.</param>
 		void OnStepFinished(string context, string message)
 		{
-            OnProgress(context, message, StatusType.Running, 0, _cheapSequence++, false, null);
+            OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 		}
 		#endregion
 	}
