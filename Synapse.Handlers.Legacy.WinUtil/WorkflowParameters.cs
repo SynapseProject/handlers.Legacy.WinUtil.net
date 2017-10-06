@@ -77,18 +77,18 @@ namespace Synapse.Handlers.Legacy.WinCore
 	}
 
 	[XmlRoot( "Tasks" )]
-	public class WinProcTaskContainer : WorkflowParameters
+	public class WinProcTaskContainer
 	{
 		[XmlElement( "Task" )]
 		public WorkflowParameters tasks;
 
-		public static new WinProcTaskContainer Deserialize(XmlElement el)
+		public static WinProcTaskContainer Deserialize(XmlElement el)
 		{
 			XmlSerializer s = new XmlSerializer( typeof( WorkflowParameters ) );
 			return (WinProcTaskContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
 		}
 
-		public static new WinProcTaskContainer Deserialize(string filePath)
+		public static WinProcTaskContainer Deserialize(string filePath)
 		{
 			using( FileStream fs = new FileStream( filePath, FileMode.Open, FileAccess.Read ) )
 			{
@@ -97,14 +97,14 @@ namespace Synapse.Handlers.Legacy.WinCore
 			}
 		}
 
-		public new string Serialize(bool indented = false)
+		public string Serialize(bool indented = false)
 		{
 			return Utils.Serialize<WinProcTaskContainer>( this, indented );
 		}
 
 		#region WorkflowParameters Members
 
-		public new WorkflowParameters FromXmlElement(XmlElement el)
+		public WorkflowParameters FromXmlElement(XmlElement el)
 		{
 			throw new NotImplementedException();
 		}
@@ -113,7 +113,7 @@ namespace Synapse.Handlers.Legacy.WinCore
 	}
 
 	[XmlRoot( "WinCore" )]
-	public class WinCoreContainer : WorkflowParameters
+	public class WinCoreContainer
 	{
 		/// <summary>
 		/// default ctor
@@ -123,13 +123,13 @@ namespace Synapse.Handlers.Legacy.WinCore
 		[XmlElement( "Tasks" )]
 		public WinProcTaskContainer winProcAdapter;
 
-		public new static WinCoreContainer Deserialize(XmlElement el)
+		public static WinCoreContainer Deserialize(XmlElement el)
 		{
 			XmlSerializer s = new XmlSerializer( typeof( WinCoreContainer ) );
 			return (WinCoreContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
 		}
 
-		public new static WinCoreContainer Deserialize(string filePath)
+		public static WinCoreContainer Deserialize(string filePath)
 		{
 			using( FileStream fs = new FileStream( filePath, FileMode.Open, FileAccess.Read ) )
 			{
@@ -138,15 +138,16 @@ namespace Synapse.Handlers.Legacy.WinCore
 			}
 		}
 
-		public new string Serialize(bool indented = false)
+		public string Serialize(bool indented = false)
 		{
 			return Utils.Serialize<WinCoreContainer>( this, indented );
 		}
 
-		public new WorkflowParameters FromXmlElement(XmlElement el)
+		public WorkflowParameters FromXmlElement(XmlElement el)
 		{
 			XmlSerializer s = new XmlSerializer( typeof( WinCoreContainer ) );
-			return (WinCoreContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
+            WinCoreContainer container = (WinCoreContainer)s.Deserialize( new System.IO.StringReader( el.OuterXml ) );
+            return container.winProcAdapter.tasks;
 		}
 	}
 }

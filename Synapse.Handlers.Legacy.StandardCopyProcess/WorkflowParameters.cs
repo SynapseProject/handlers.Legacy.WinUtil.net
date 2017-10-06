@@ -22,19 +22,19 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		#region properties
 		string _user = string.Empty;
 
-		public string PackageKey { get; set; }
-		public string RequestNumber { get; set; }
-		public string EncryptedUser { get; set; }
-		public string User
-		{
-			get { return _user; }
-			set
-			{
-				string[] u = value.Split( '\\' );
-				_user = (u.Length > 1) ? u[1] : u[0];
-			}
-		}
-		public string LogPath { get; set; }
+//		public string PackageKey { get; set; }
+//		public string RequestNumber { get; set; }
+//		public string EncryptedUser { get; set; }
+//		public string User
+//		{
+//			get { return _user; }
+//			set
+//			{
+//				string[] u = value.Split( '\\' );
+//				_user = (u.Length > 1) ? u[1] : u[0];
+//			}
+//		}
+//		public string LogPath { get; set; }
 
 		public string DeploymentRoot { get; set; }
 		public string SourceDirectory { get; set; }
@@ -96,16 +96,16 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 
 		//the parameters not currently in use, possible future use
-		public List<KeyValue> KeyValueMap { get; set; }
-		public string CreateRemedyTicket { get; set; }
-		public string NotificationGroup { get; set; }
-		public string ApplicationName { get; set; }
-		public string ControlledMigrationFlag { get; set; }
-		public string CachedFilesFolder { get; set; }
-		public string StagingFolder { get; set; }
-		public string ProcessedFolder { get; set; }
-		public string EnvironmentFolder { get; set; }
-		public string MigrationType { get; set; }
+//		public List<KeyValue> KeyValueMap { get; set; }
+//		public string CreateRemedyTicket { get; set; }
+//		public string NotificationGroup { get; set; }
+//		public string ApplicationName { get; set; }
+//		public string ControlledMigrationFlag { get; set; }
+//		public string CachedFilesFolder { get; set; }
+//		public string StagingFolder { get; set; }
+//		public string ProcessedFolder { get; set; }
+//		public string EnvironmentFolder { get; set; }
+//		public string MigrationType { get; set; }
 
 
 
@@ -146,10 +146,10 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			{
 				ConfigFiles = new List<ConfigFile>();
 			}
-			if( KeyValueMap == null )
-			{
-				KeyValueMap = new List<KeyValue>();
-			}
+//			if( KeyValueMap == null )
+//			{
+//				KeyValueMap = new List<KeyValue>();
+//			}
 			#endregion
 
 			#region IsSourceDirectoryValid

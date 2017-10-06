@@ -49,24 +49,14 @@ namespace Synapse.Handlers.Legacy.WinCore
 		/// </summary>
 		public WorkflowParameters Parameters
 		{
-			get { return _wfp; }
-			set
-			{
-				if( value is WinCoreContainer )
-				{
-					_wfp = ((WinCoreContainer)value).winProcAdapter.tasks;
-				}
-				else
-				{
-					_wfp = value as WorkflowParameters;
-				}
-			}
-		}
+            get { return _wfp; }
+            set { _wfp = value as WorkflowParameters; }
+        }
 
-		/// <summary>
-		/// Executes the main workflow.
-		/// </summary>
-		public void ExecuteAction(HandlerStartInfo startInfo)
+        /// <summary>
+        /// Executes the main workflow.
+        /// </summary>
+        public void ExecuteAction(HandlerStartInfo startInfo)
 		{
 			string context = "ExecuteAction";
             _startInfo = startInfo;
