@@ -11,9 +11,18 @@ using System.IO;
 using Synapse.Handlers.Legacy.StandardCopyProcess;
 
 using Synapse.Core;
+using Synapse.Core.Utilities;
 
 public class StandardCopyProcessHandler : HandlerRuntimeBase
 {
+    public HandlerConfig config = null;
+
+    public override IHandlerRuntime Initialize(string config)
+    {
+        this.config = DeserializeOrNew<HandlerConfig>( config );
+        return this;
+    }
+
     override public ExecuteResult Execute(HandlerStartInfo startInfo)
     {
         XmlSerializer ser = new XmlSerializer(typeof(WorkflowParameters));
@@ -25,6 +34,9 @@ public class StandardCopyProcessHandler : HandlerRuntimeBase
 
         wf.OnLogMessage = this.OnLogMessage;
         wf.OnProgress = this.OnProgress;
+
+        if ( config.Aws != null )
+            wf.InitializeS3Client( config.Aws.AccessKey, config.Aws.SecretKey, config.Aws.AwsRegion );
 
         wf.ExecuteAction(startInfo);
 

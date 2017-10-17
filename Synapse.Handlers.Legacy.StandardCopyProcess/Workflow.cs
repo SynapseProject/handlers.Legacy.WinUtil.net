@@ -12,6 +12,9 @@ using Synapse.Core;
 using Synapse.Handlers.Legacy.WinCore;
 using System.Security.Cryptography.Utility;
 
+using Synapse.Aws.Core;
+using Amazon;
+
 using settings = Synapse.Handlers.Legacy.StandardCopyProcess.Properties.Settings;
 
 namespace Synapse.Handlers.Legacy.StandardCopyProcess
@@ -20,6 +23,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 	{
 		WorkflowParameters _wfp = null;
         HandlerStartInfo _startInfo = null;
+        S3Client S3Client = null;
         public Action<string, string, LogLevel, Exception> OnLogMessage;
         public Func<string, string, StatusType, long, int, bool, Exception, bool> OnProgress;
 
@@ -113,7 +117,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			OnStepProgress( context, Utils.GetHeaderMessage( "Begin [PrepareAndValidate]" ) );
 
-			_wfp.PrepareAndValidate();
+			_wfp.PrepareAndValidate(this);
 
 			OnStepProgress( context, Utils.GetMessagePadRight( "SourceDirectory", _wfp.SourceDirectory, padding ) );
 			OnStepProgress( context, Utils.GetMessagePadRight( "IsSourceDirectoryValid", _wfp.IsSourceDirectoryValid, padding ) );
@@ -167,7 +171,15 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			Dictionary<string, string> backupTargets = new Dictionary<string, string>();
 
-			string[] files = Directory.GetFiles( _wfp.SourceDirectory, "*", io.SearchOption.AllDirectories );
+            string[] files = null;
+
+            if ( IsS3Url( _wfp.SourceDirectory ) )
+            {
+                string[] url = SplitS3Url( _wfp.SourceDirectory );
+                files = S3Client.GetFiles( url[0], url[1] );
+            }
+            else
+                files = Directory.GetFiles( _wfp.SourceDirectory, "*", io.SearchOption.AllDirectories );
 
 			if( _wfp.HasBackupRemoteDestination && _wfp.IsBackupRemoteDestinationValid )
 			{
@@ -853,14 +865,19 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
 			try
 			{
-                if (_startInfo.IsDryRun)
+                if ( _startInfo.IsDryRun )
                 {
-                    OnStepProgress("DryRun:CopyFolder", "DryRun Flag Is Set.  No Files Will Be Copied.");
-                    OnStepProgress("DryRun:CopyFolder", "Copying From : " + source + " To " + destination);
+                    OnStepProgress( "DryRun:CopyFolder", "DryRun Flag Is Set.  No Files Will Be Copied." );
+                    OnStepProgress( "DryRun:CopyFolder", "Copying From : " + source + " To " + destination );
+                }
+                else if ( IsS3Url( source ) )
+                {
+                    string[] url = SplitS3Url( source );
+                    S3Client.CopyBucketObjects( url[0], destination, url[1], false );
                 }
                 else
                     //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-                    Directory.Copy(source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath);
+                    Directory.Copy( source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
 			}
 			catch( Exception ex )
 			{
@@ -987,6 +1004,52 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
             OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 		}
-		#endregion
-	}
+        #endregion
+
+        #region S3 Functions
+
+        public bool UsesAwsS3()
+        {
+            return (S3Client != null);
+        }
+
+        public bool IsS3Url(string url)
+        {
+            return url.StartsWith( @"s3://", StringComparison.OrdinalIgnoreCase );
+        }
+
+        public bool S3Exists(string s3Path)
+        {
+            string[] url = SplitS3Url( s3Path );
+            return S3Client.Exists( url[0], url[1] );
+        }
+
+        public string[] S3ReadAllLines(string s3Path)
+        {
+            string[] url = SplitS3Url( s3Path );
+            return S3Client.ReadAllLines( url[0], url[1] );
+        }
+
+        public string[] SplitS3Url(string url)
+        {
+            if ( url.StartsWith( @"s3://", StringComparison.OrdinalIgnoreCase ) )
+            {
+                char[] seperators = { '/', '\\' };
+                String s3Path = url.Substring( 5 );
+                return s3Path.Split( seperators, 2 );
+            }
+            else
+                return null;
+        }
+
+        public void InitializeS3Client(string accessKey, string secretKey, RegionEndpoint endPoint)
+        {
+            if ( String.IsNullOrWhiteSpace( accessKey ) || String.IsNullOrWhiteSpace( secretKey ) )
+                this.S3Client = new S3Client( endPoint );
+            else
+                this.S3Client = new S3Client( accessKey, secretKey, endPoint );
+        }
+
+        #endregion
+    }
 }

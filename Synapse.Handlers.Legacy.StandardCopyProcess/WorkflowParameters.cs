@@ -123,7 +123,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		#endregion
 
 
-		public void PrepareAndValidate()
+		public void PrepareAndValidate(Workflow wf)
 		{
 			#region initialize lists if required
 			if( Servers == null )
@@ -154,11 +154,17 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			#region IsSourceDirectoryValid
 			SourceDirectory = Utils.PathCombine( DeploymentRoot, SourceDirectory );
-			IsSourceDirectoryValid = Directory.Exists( SourceDirectory );
+            if ( wf.IsS3Url( SourceDirectory ) )
+                IsSourceDirectoryValid = wf.S3Exists( SourceDirectory );
+            else
+    			IsSourceDirectoryValid = Directory.Exists( SourceDirectory );
 			if( MoveToNext )
 			{
 				NextEnvironmentSourceDirectory = Utils.PathCombine( DeploymentRoot, NextEnvironmentSourceDirectory );
-				IsNextEnvironmentSourceDirectoryValid = Directory.Exists( NextEnvironmentSourceDirectory );
+                if ( wf.IsS3Url( NextEnvironmentSourceDirectory ) )
+                    IsNextEnvironmentSourceDirectoryValid = wf.S3Exists( NextEnvironmentSourceDirectory );
+                else
+    				IsNextEnvironmentSourceDirectoryValid = Directory.Exists( NextEnvironmentSourceDirectory );
 			}
 			#endregion
 
@@ -166,7 +172,10 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			IsTargetRemoteDestinationValid = true;
 			if( HasTargetRemoteDestination )
 			{
-				IsTargetRemoteDestinationValid = Directory.Exists( TargetRemoteDestination );
+                if ( wf.IsS3Url( TargetRemoteDestination ) )
+                    IsTargetRemoteDestinationValid = wf.S3Exists( TargetRemoteDestination );
+                else
+    				IsTargetRemoteDestinationValid = Directory.Exists( TargetRemoteDestination );
 			}
 			#endregion
 
@@ -175,7 +184,10 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			if( HasBackupRemoteDestination )
 			{
 				BackupRemoteDestination = Utils.PathCombine( DeploymentRoot, BackupRemoteDestination );
-				IsBackupRemoteDestinationValid = Directory.Exists( BackupRemoteDestination );
+                if ( wf.IsS3Url( BackupRemoteDestination ) )
+                    IsBackupRemoteDestinationValid = wf.S3Exists( BackupRemoteDestination );
+                else
+    				IsBackupRemoteDestinationValid = Directory.Exists( BackupRemoteDestination );
 			}
 			#endregion
 
@@ -213,7 +225,10 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 							if( c == 0 )
 							{
 								BackupServerDestination = Utils.PathCombine( DeploymentRoot, BackupServerDestination );
-								IsBackupServerDestinationValid &= Directory.Exists( BackupServerDestination, PathFormat.LongFullPath );
+                                if ( wf.IsS3Url( BackupServerDestination ) )
+                                    IsBackupServerDestinationValid &= wf.S3Exists( BackupServerDestination );
+                                else
+                                    IsBackupServerDestinationValid &= Directory.Exists( BackupServerDestination, PathFormat.LongFullPath );
 							}
 						}
 						else
@@ -238,7 +253,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			#endregion
 
 			#region IsDeleteManifestPathValid/HasTargetDelete
-			DeleteManifest.Validate( SourceDirectory );
+			DeleteManifest.Validate( SourceDirectory, wf );
 			#endregion
 
 			#region IsConfigTransformFileListValid
@@ -256,8 +271,15 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					string configFile = Path.GetLongPath( Utils.PathCombine( SourceDirectory, cf.Name ) );
 					string transformFile = Path.GetLongPath( Utils.PathCombine( SourceDirectory, cf.TransformFile ) );
 
-					cf.NameExists = File.Exists( configFile );
-					cf.TransformFileExists = File.Exists( transformFile );
+                    if ( wf.IsS3Url( configFile ) )
+                        cf.NameExists = wf.S3Exists( configFile );
+                    else
+    					cf.NameExists = File.Exists( configFile );
+
+                    if ( wf.IsS3Url( transformFile ) )
+                        cf.TransformFileExists = wf.S3Exists( transformFile );
+                    else
+    					cf.TransformFileExists = File.Exists( transformFile );
 					if( !cf.IsValid )
 					{
 						IsConfigTransformFileListValid = false;
@@ -444,16 +466,22 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		public bool HasPaths { get { return Paths != null && Paths.Length > 0; } }
 
 
-		public void Validate(string sourceDirectory)
+		public void Validate(string sourceDirectory, Workflow wf)
 		{
 			IsFileNameValid = true;
 			if( HasFileName )
 			{
 				FileName = Utils.PathCombine( sourceDirectory, FileName );
-				IsFileNameValid = File.Exists( FileName );
+                if ( wf.IsS3Url( FileName ) )
+                    IsFileNameValid = wf.S3Exists( FileName );
+                else
+    				IsFileNameValid = File.Exists( FileName );
 				if( IsFileNameValid )
 				{
-					Paths = File.ReadAllLines( FileName );
+                    if ( wf.IsS3Url( FileName ) )
+                        Paths = wf.S3ReadAllLines( FileName );
+                    else
+    					Paths = File.ReadAllLines( FileName );
 				}
 			}
 			else

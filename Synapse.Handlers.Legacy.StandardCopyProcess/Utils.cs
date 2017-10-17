@@ -116,6 +116,5 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
             w.Close();
             return result;
         }
-
     }
 }
