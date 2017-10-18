@@ -22,20 +22,6 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		#region properties
 		string _user = string.Empty;
 
-//		public string PackageKey { get; set; }
-//		public string RequestNumber { get; set; }
-//		public string EncryptedUser { get; set; }
-//		public string User
-//		{
-//			get { return _user; }
-//			set
-//			{
-//				string[] u = value.Split( '\\' );
-//				_user = (u.Length > 1) ? u[1] : u[0];
-//			}
-//		}
-//		public string LogPath { get; set; }
-
 		public string DeploymentRoot { get; set; }
 		public string SourceDirectory { get; set; }
 		[XmlIgnore()]
@@ -94,21 +80,6 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		[XmlIgnore()]
 		internal List<ConfigFile> ConfigsWithTransformFiles { get; set; }
 
-
-		//the parameters not currently in use, possible future use
-//		public List<KeyValue> KeyValueMap { get; set; }
-//		public string CreateRemedyTicket { get; set; }
-//		public string NotificationGroup { get; set; }
-//		public string ApplicationName { get; set; }
-//		public string ControlledMigrationFlag { get; set; }
-//		public string CachedFilesFolder { get; set; }
-//		public string StagingFolder { get; set; }
-//		public string ProcessedFolder { get; set; }
-//		public string EnvironmentFolder { get; set; }
-//		public string MigrationType { get; set; }
-
-
-
 		[XmlIgnore()]
 		public bool IsValid
 		{
@@ -146,21 +117,24 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			{
 				ConfigFiles = new List<ConfigFile>();
 			}
-//			if( KeyValueMap == null )
-//			{
-//				KeyValueMap = new List<KeyValue>();
-//			}
-			#endregion
+            //			if( KeyValueMap == null )
+            //			{
+            //				KeyValueMap = new List<KeyValue>();
+            //			}
+            #endregion
 
-			#region IsSourceDirectoryValid
-			SourceDirectory = Utils.PathCombine( DeploymentRoot, SourceDirectory );
+            #region IsSourceDirectoryValid
+            if ( !String.IsNullOrWhiteSpace( DeploymentRoot ) )
+                SourceDirectory = Utils.PathCombine( DeploymentRoot, SourceDirectory );
+
             if ( wf.IsS3Url( SourceDirectory ) )
                 IsSourceDirectoryValid = wf.S3Exists( SourceDirectory );
             else
     			IsSourceDirectoryValid = Directory.Exists( SourceDirectory );
 			if( MoveToNext )
 			{
-				NextEnvironmentSourceDirectory = Utils.PathCombine( DeploymentRoot, NextEnvironmentSourceDirectory );
+                if ( !String.IsNullOrWhiteSpace( DeploymentRoot ) )
+                    NextEnvironmentSourceDirectory = Utils.PathCombine( DeploymentRoot, NextEnvironmentSourceDirectory );
                 if ( wf.IsS3Url( NextEnvironmentSourceDirectory ) )
                     IsNextEnvironmentSourceDirectoryValid = wf.S3Exists( NextEnvironmentSourceDirectory );
                 else
@@ -183,7 +157,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			IsBackupRemoteDestinationValid = true;
 			if( HasBackupRemoteDestination )
 			{
-				BackupRemoteDestination = Utils.PathCombine( DeploymentRoot, BackupRemoteDestination );
+                if ( !String.IsNullOrWhiteSpace(DeploymentRoot) )
+                    BackupRemoteDestination = Utils.PathCombine( DeploymentRoot, BackupRemoteDestination );
                 if ( wf.IsS3Url( BackupRemoteDestination ) )
                     IsBackupRemoteDestinationValid = wf.S3Exists( BackupRemoteDestination );
                 else
@@ -224,7 +199,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 						{
 							if( c == 0 )
 							{
-								BackupServerDestination = Utils.PathCombine( DeploymentRoot, BackupServerDestination );
+                                if ( !String.IsNullOrWhiteSpace( DeploymentRoot ) )
+                                    BackupServerDestination = Utils.PathCombine( DeploymentRoot, BackupServerDestination );
                                 if ( wf.IsS3Url( BackupServerDestination ) )
                                     IsBackupServerDestinationValid &= wf.S3Exists( BackupServerDestination );
                                 else

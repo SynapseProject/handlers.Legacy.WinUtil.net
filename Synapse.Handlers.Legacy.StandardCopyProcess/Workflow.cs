@@ -109,6 +109,11 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
         }
 
+        public void LogFileCopyProgress(string context, string message)
+        {
+            OnLogMessage( context, message, LogLevel.Info, null );
+        }
+
         #region Validate Parameters
         bool ValidateParameters()
 		{
@@ -873,7 +878,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                 else if ( IsS3Url( source ) )
                 {
                     string[] url = SplitS3Url( source );
-                    S3Client.CopyBucketObjects( url[0], destination, url[1], false );
+                    S3Client.CopyBucketObjectsToLocal( url[0], destination, url[1], false, LogFileCopyProgress );
                 }
                 else
                     //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
@@ -913,47 +918,61 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			try
 			{
+                if ( IsS3Url( source ) )
+                {
+                    string[] sourceUrl = SplitS3Url( source );
+                    if ( IsS3Url(destination) )
+                    {
 
-				string[] dirs = Directory.GetDirectories( source );
-				foreach( string dir in dirs )
-				{
-					string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
-					string dst = Utils.PathCombine( destination, folder );
-
-                    if (_startInfo.IsDryRun)
-                        OnStepProgress(context, "Moving Folder : " + dir + " To " + dst);
+                    }
                     else
                     {
-                        //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-                        Directory.Copy(dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath);
-                        //true->recursive, true->ignoreReadOnly
-                        Directory.Delete(dir, true, true, PathFormat.FullPath);
-
-                        #region note from Steve: do not switch back to Directory.Move
-                        //note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
-                        //		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
-                        //		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
-                        //		as a Copy + Delete.  Original implementation was:
-                        //Directory.Move( dir, dst,
-                        //	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                        S3Client.MoveBucketObjectsToLocal( sourceUrl[0], destination, sourceUrl[1], false, LogFileCopyProgress );
                     }
-					#endregion
-				}
-
-				string[] files = Directory.GetFiles( source );
-				foreach( string file in files )
-				{
-					string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
-                    if (_startInfo.IsDryRun)
-                        OnStepProgress(context, "Moving File : " + file + " To " + dst);
-                    else
+                }
+                else
+                {
+                    string[] dirs = Directory.GetDirectories( source );
+                    foreach ( string dir in dirs )
                     {
-                        File.Move(file, dst,
-                        MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath);
-                    }
-				}
+                        string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
+                        string dst = Utils.PathCombine( destination, folder );
 
-				clock.Stop();
+                        if ( _startInfo.IsDryRun )
+                            OnStepProgress( context, "Moving Folder : " + dir + " To " + dst );
+                        else
+                        {
+                            //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
+                            Directory.Copy( dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                            //true->recursive, true->ignoreReadOnly
+                            Directory.Delete( dir, true, true, PathFormat.FullPath );
+
+                            #region note from Steve: do not switch back to Directory.Move
+                            //note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
+                            //		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
+                            //		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
+                            //		as a Copy + Delete.  Original implementation was:
+                            //Directory.Move( dir, dst,
+                            //	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                        }
+                        #endregion
+                    }
+
+                    string[] files = Directory.GetFiles( source );
+                    foreach ( string file in files )
+                    {
+                        string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
+                        if ( _startInfo.IsDryRun )
+                            OnStepProgress( context, "Moving File : " + file + " To " + dst );
+                        else
+                        {
+                            File.Move( file, dst,
+                            MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                        }
+                    }
+                }
+
+                clock.Stop();
 				msg = Utils.GetHeaderMessage( string.Format( "End move for: [{0}  [to]  {1}]: Total Execution Time: {2}",
 					source, destination, clock.ElapsedSeconds() ) );
 				OnStepFinished( context, msg );
