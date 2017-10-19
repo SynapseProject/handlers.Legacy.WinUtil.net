@@ -82,7 +82,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                     {
                         if (_wfp.TruncateNextEnvironmentDirectory)
                         {
-                            DeleteFolder(_wfp.NextEnvironmentSourceDirectory, true);
+                            if (IsS3Url(_wfp.NextEnvironmentSourceDirectory))
+                            {
+                                string[] nextEnvSrcDirUrl = SplitS3Url( _wfp.NextEnvironmentSourceDirectory );
+                                S3Client.DeleteBucketObjects( nextEnvSrcDirUrl[0], nextEnvSrcDirUrl[1], LogFileCopyProgress );
+                            }
+                            else
+                                DeleteFolder(_wfp.NextEnvironmentSourceDirectory, true);
                         }
 
                         MoveFolderContent(_wfp.SourceDirectory, _wfp.NextEnvironmentSourceDirectory);
