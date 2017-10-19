@@ -923,7 +923,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                     string[] sourceUrl = SplitS3Url( source );
                     if ( IsS3Url(destination) )
                     {
-
+                        string[] destinationUrl = SplitS3Url( destination );
+                        S3Client.MoveBucketObjects( sourceUrl[0], sourceUrl[1], destinationUrl[0], destinationUrl[1], false, LogFileCopyProgress );
                     }
                     else
                     {
@@ -932,42 +933,50 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                 }
                 else
                 {
-                    string[] dirs = Directory.GetDirectories( source );
-                    foreach ( string dir in dirs )
+                    if ( IsS3Url( destination ) )
                     {
-                        string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
-                        string dst = Utils.PathCombine( destination, folder );
-
-                        if ( _startInfo.IsDryRun )
-                            OnStepProgress( context, "Moving Folder : " + dir + " To " + dst );
-                        else
-                        {
-                            //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-                            Directory.Copy( dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
-                            //true->recursive, true->ignoreReadOnly
-                            Directory.Delete( dir, true, true, PathFormat.FullPath );
-
-                            #region note from Steve: do not switch back to Directory.Move
-                            //note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
-                            //		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
-                            //		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
-                            //		as a Copy + Delete.  Original implementation was:
-                            //Directory.Move( dir, dst,
-                            //	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
-                        }
-                        #endregion
+                        string[] destinationUrl = SplitS3Url( destination );
+                        S3Client.MoveFilesToBucket( source, destinationUrl[0], destinationUrl[1], LogFileCopyProgress );
                     }
-
-                    string[] files = Directory.GetFiles( source );
-                    foreach ( string file in files )
+                    else
                     {
-                        string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
-                        if ( _startInfo.IsDryRun )
-                            OnStepProgress( context, "Moving File : " + file + " To " + dst );
-                        else
+                        string[] dirs = Directory.GetDirectories( source );
+                        foreach ( string dir in dirs )
                         {
-                            File.Move( file, dst,
-                            MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                            string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
+                            string dst = Utils.PathCombine( destination, folder );
+
+                            if ( _startInfo.IsDryRun )
+                                OnStepProgress( context, "Moving Folder : " + dir + " To " + dst );
+                            else
+                            {
+                                //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
+                                Directory.Copy( dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                                //true->recursive, true->ignoreReadOnly
+                                Directory.Delete( dir, true, true, PathFormat.FullPath );
+
+                                #region note from Steve: do not switch back to Directory.Move
+                                //note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
+                                //		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
+                                //		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
+                                //		as a Copy + Delete.  Original implementation was:
+                                //Directory.Move( dir, dst,
+                                //	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                            }
+                            #endregion
+                        }
+
+                        string[] files = Directory.GetFiles( source );
+                        foreach ( string file in files )
+                        {
+                            string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
+                            if ( _startInfo.IsDryRun )
+                                OnStepProgress( context, "Moving File : " + file + " To " + dst );
+                            else
+                            {
+                                File.Move( file, dst,
+                                MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                            }
                         }
                     }
                 }
