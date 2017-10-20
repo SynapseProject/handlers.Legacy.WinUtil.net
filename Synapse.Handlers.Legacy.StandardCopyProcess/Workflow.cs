@@ -770,7 +770,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
 			try
 			{
-				DeleteFolder( targetPath, true );
+                if ( IsS3Url( targetPath ) )
+                {
+                    string[] url = SplitS3Url( targetPath );
+                    S3Client.DeleteBucketObjects( url[0], url[1], LogFileCopyProgress );
+                }
+                else
+    				DeleteFolder( targetPath, true );
 			}
 			catch( Exception ex )
 			{
