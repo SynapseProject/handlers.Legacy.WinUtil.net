@@ -884,11 +884,25 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                 else if ( IsS3Url( source ) )
                 {
                     string[] url = SplitS3Url( source );
-                    S3Client.CopyBucketObjectsToLocal( url[0], destination, url[1], false, LogFileCopyProgress );
+                    if ( IsS3Url( destination ) )
+                    {
+                        string[] destUrl = SplitS3Url( destination );
+                        S3Client.CopyBucketObjects( url[0], url[1], destUrl[0], destUrl[1], false, LogFileCopyProgress );
+                    }
+                    else
+                        S3Client.CopyBucketObjectsToLocal( url[0], destination, url[1], false, LogFileCopyProgress );
                 }
                 else
-                    //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-                    Directory.Copy( source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                {
+                    if ( IsS3Url( destination ) )
+                    {
+                        string[] destUrl = SplitS3Url( destination );
+                        S3Client.UploadFilesToBucket( source, destUrl[0], destUrl[1], LogFileCopyProgress );
+                    }
+                    else
+                        //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
+                        Directory.Copy( source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                }
 			}
 			catch( Exception ex )
 			{
