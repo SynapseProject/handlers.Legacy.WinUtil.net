@@ -237,26 +237,56 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			foreach( string file in files )
 			{
 				string unrootedFile = file.Replace( _wfp.SourceDirectory, string.Empty );
-				string sourceFile = Utils.PathCombine( targetDestination, unrootedFile );
-				string destinationFile = Utils.PathCombine( backupDestination, unrootedFile );
-				if( File.Exists( sourceFile ) )
-				{
-					string destDir = Path.GetDirectoryName( destinationFile );
-                    if (_startInfo.IsDryRun)
-                        OnProgress("DryRun:BackupContent", "Backing Up File : " + sourceFile + " To " + destinationFile, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
-                    else
-                    {
-                        if (!Directory.Exists(destDir))
-                        {
-                            Directory.CreateDirectory(destDir);
-                        }
+                string sourceFile = Utils.PathCombine( targetDestination, unrootedFile.Replace( "/", "\\" ));
+                if ( IsS3Url( targetDestination ) )
+                    sourceFile = Utils.PathCombineS3( targetDestination, unrootedFile );
+				string destinationFile = Utils.PathCombine( backupDestination, unrootedFile.Replace( "/", "\\" ) );
+                if ( IsS3Url( backupDestination) )
+                    destinationFile = Utils.PathCombineS3( backupDestination, unrootedFile );
+                string sourceDirectoryUrl = sourceFile.Replace( unrootedFile, string.Empty );
 
-                        //CopyOptions.None->Allow overwrite if file exists in backup destination
-                        //true->preserveDates
-                        File.Copy(sourceFile, destinationFile,
-                            CopyOptions.None, true, CopyMoveProgressHandler, null, PathFormat.FullPath);
+                if ( _startInfo.IsDryRun )
+                    OnProgress( "DryRun:BackupContent", "Backing Up File : " + sourceFile + " To " + destinationFile, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null );
+                else if ( IsS3Url( sourceFile ) )
+                {
+                    string[] sourceUrl = SplitS3Url( sourceFile );
+                    if ( S3Client.Exists(sourceUrl[0], sourceUrl[1] ))
+                    {
+                        if ( IsS3Url( destinationFile ) )
+                        {
+                            string[] destUrl = SplitS3Url( destinationFile );
+                            S3Client.CopyObject( sourceUrl[0], sourceUrl[1], destUrl[0], destUrl[1], sourceUrl[1], LogFileCopyProgress );
+                        }
+                        else
+                        {
+                            S3Client.CopyObjectToLocal( sourceUrl[0], sourceUrl[1], destinationFile, sourceUrl[1], LogFileCopyProgress );
+                        }
                     }
-				}
+                }
+                else
+                {
+                    if ( File.Exists( sourceFile ) )
+                    {
+                        if ( IsS3Url( destinationFile ) )
+                        {
+                            string[] destUrl = SplitS3Url( destinationFile );
+                            S3Client.UploadToBucket( sourceFile, destUrl[0], destUrl[1].Replace(unrootedFile, string.Empty), sourceDirectoryUrl, LogFileCopyProgress );
+                        }
+                        else
+                        {
+                            string destDir = Path.GetDirectoryName( destinationFile );
+                            if ( !Directory.Exists( destDir ) )
+                            {
+                                Directory.CreateDirectory( destDir );
+                            }
+
+                            //CopyOptions.None->Allow overwrite if file exists in backup destination
+                            //true->preserveDates
+                            File.Copy( sourceFile, destinationFile,
+                                CopyOptions.None, true, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                        }
+                    }
+                }
 			}
 		}
 		#endregion
