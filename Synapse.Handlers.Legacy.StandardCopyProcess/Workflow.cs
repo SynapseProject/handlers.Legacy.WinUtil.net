@@ -508,7 +508,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 						TruncateTargetDirectory( serverDest );
 					}
 					CopyFolder( _wfp.SourceDirectory, serverDest );
-					RenameConfigsAtTartget( serverDest );
+					RenameConfigsAtTarget( serverDest );
 					if( _wfp.DeleteManifest.HasPaths )
 					{
 						AggregateException dmEx = DeleteManifestPathsContent( serverDest );
@@ -526,7 +526,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 						TruncateTargetDirectory( _wfp.TargetRemoteDestination );
 					}
 					CopyFolder( _wfp.SourceDirectory, _wfp.TargetRemoteDestination );
-					RenameConfigsAtTartget( _wfp.TargetRemoteDestination );
+					RenameConfigsAtTarget( _wfp.TargetRemoteDestination );
 					if( _wfp.DeleteManifest.HasPaths )
 					{
 						AggregateException dmEx = DeleteManifestPathsContent( _wfp.TargetRemoteDestination );
@@ -554,7 +554,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// </summary>
 		/// <param name="source">The source directory path.</param>
 		/// <param name="destination">The destination directory path.</param>
-		void RenameConfigsAtTartget(string destination)
+		void RenameConfigsAtTarget(string destination)
 		{
             String ctx = "UpdateConfigsAtTarget";
             if (_startInfo.IsDryRun)
@@ -809,23 +809,32 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				{
 					if( !string.IsNullOrEmpty( path.Trim() ) )
 					{
-						relPath = path;
-						fullPath = Utils.PathCombine( rootPath, path );
+                        if ( IsS3Url( rootPath ) )
+                        {
+                            fullPath = Utils.PathCombineS3( rootPath, path );
+                            string[] url = SplitS3Url( fullPath );
+                            S3Client.DeleteObject( url[0], url[1] );
+                        }
+                        else
+                        {
+                            relPath = path;
+                            fullPath = Utils.PathCombine( rootPath, path );
 
-						bool isDir =
-							(File.GetAttributes( fullPath, PathFormat.FullPath ) & io.FileAttributes.Directory) ==
-							io.FileAttributes.Directory;
-						if( isDir )
-						{
-                            if (!_startInfo.IsDryRun)
-    							DeleteFolder( fullPath, false );
-						}
-						else
-						{
-							if (!_startInfo.IsDryRun)
-                                //true->ignoreReadOnly
-							    File.Delete( fullPath, true, PathFormat.FullPath );
-						}
+                            bool isDir =
+                                (File.GetAttributes( fullPath, PathFormat.FullPath ) & io.FileAttributes.Directory) ==
+                                io.FileAttributes.Directory;
+                            if ( isDir )
+                            {
+                                if ( !_startInfo.IsDryRun )
+                                    DeleteFolder( fullPath, false );
+                            }
+                            else
+                            {
+                                if ( !_startInfo.IsDryRun )
+                                    //true->ignoreReadOnly
+                                    File.Delete( fullPath, true, PathFormat.FullPath );
+                            }
+                        }
 
 						OnStepProgress( context, string.Format( "Deleted: [{0}]", fullPath ) );
 					}

@@ -447,19 +447,22 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			IsFileNameValid = true;
 			if( HasFileName )
 			{
-				FileName = Utils.PathCombine( sourceDirectory, FileName );
-                if ( wf.IsS3Url( FileName ) )
+                if ( wf.IsS3Url( sourceDirectory ) )
+                {
+                    FileName = Utils.PathCombineS3( sourceDirectory, FileName );
                     IsFileNameValid = wf.S3Exists( FileName );
-                else
-    				IsFileNameValid = File.Exists( FileName );
-				if( IsFileNameValid )
-				{
-                    if ( wf.IsS3Url( FileName ) )
+                    if (IsFileNameValid)
                         Paths = wf.S3ReadAllLines( FileName );
-                    else
-    					Paths = File.ReadAllLines( FileName );
-				}
-			}
+                }
+                else
+                {
+                    FileName = Utils.PathCombine( sourceDirectory, FileName );
+                    IsFileNameValid = File.Exists( FileName );
+                    if ( IsFileNameValid )
+                        Paths = File.ReadAllLines( FileName );
+                }
+
+            }
 			else
 			{
 				Paths = new string[] { };
