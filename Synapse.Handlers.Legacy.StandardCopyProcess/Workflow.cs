@@ -337,41 +337,90 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			string tempFileToSave = Path.GetRandomFileName();
 
-			try
-			{
-				cf.TransformFileOriginalName = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.Name ) );
-				tempFileToSave = Utils.PathCombine( Path.GetDirectoryName( cf.TransformFileOriginalName ), tempFileToSave );
+            System.IO.Stream transformFileOriginalStream = null;
+            System.IO.Stream tempFileStream = null;
+            System.IO.Stream transformFileStream = null;
 
-				//execute the transform
-				string transformFile = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.TransformFile ) );
-				using( XmlTransformableDocument doc = new XmlTransformableDocument() )
+            try
+            {
+                if ( IsS3Url( sourceFolderPath ) )
+                {
+                    cf.TransformFileOriginalName = Utils.PathCombineS3( sourceFolderPath, cf.Name );
+                    string[] tfOriginalUrl = SplitS3Url( cf.TransformFileOriginalName );
+                    transformFileOriginalStream = S3Client.GetObjectStream( tfOriginalUrl[0], tfOriginalUrl[1], S3FileMode.Open, S3FileAccess.Read );
+                    tempFileToSave = Utils.PathCombineS3( cf.TransformFileOriginalName.Substring(0, cf.TransformFileOriginalName.LastIndexOf('/')), tempFileToSave );
+                    string[] tempUrl = SplitS3Url( tempFileToSave );
+                    tempFileStream = S3Client.GetObjectStream( tempUrl[0], tempUrl[1], S3FileMode.OpenOrCreate, S3FileAccess.Write );
+                }
+                else
+                {
+                    cf.TransformFileOriginalName = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.Name ) );
+                    transformFileOriginalStream = File.Open( cf.TransformFileOriginalName, System.IO.FileMode.Open, System.IO.FileAccess.Read );
+                    tempFileToSave = Utils.PathCombine( Path.GetDirectoryName( cf.TransformFileOriginalName ), tempFileToSave );
+                    tempFileStream = File.Open( tempFileToSave, io.FileMode.OpenOrCreate, io.FileAccess.Write );
+                }
+
+                //execute the transform
+                string transformFile = null;
+                if ( IsS3Url( sourceFolderPath ) )
+                {
+                    // Transform File Must Be Open Read/Write, Which S3 Does Not Support.
+                    // Read S3 Stream Into A MemoryStream And Use That Instead.
+                    transformFile = Utils.PathCombineS3( sourceFolderPath, cf.TransformFile );
+                    string[] tfUrl = SplitS3Url( transformFile );
+                    System.IO.Stream xformContent = S3Client.GetObjectStream( tfUrl[0], tfUrl[1], S3FileMode.OpenOrCreate, S3FileAccess.Read );
+                    System.IO.MemoryStream ms = new System.IO.MemoryStream();
+                    xformContent.CopyTo( ms );
+                    xformContent.Close();
+
+                    ms.Position = 0;
+                    transformFileStream = ms;
+                }
+                else
+                {
+                    transformFile = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.TransformFile ) );
+                    transformFileStream = File.Open( transformFile, System.IO.FileMode.OpenOrCreate, System.IO.FileAccess.ReadWrite );
+                }
+
+                using ( XmlTransformableDocument doc = new XmlTransformableDocument() )
 				{
 					doc.PreserveWhitespace = true;
 
-					using( io.StreamReader sr = new io.StreamReader( cf.TransformFileOriginalName ) )
+					using( io.StreamReader sr = new io.StreamReader( transformFileOriginalStream ) )
 					{
 						doc.Load( sr );
 					}
 
-					//doc.Load(cf.TransformFileOriginalName);
+                    //doc.Load(cf.TransformFileOriginalName);
 
-					using( XmlTransformation xt = new XmlTransformation( transformFile ) )
-					{
-						xt.Apply( doc );
-						doc.Save( tempFileToSave );
-					}
+                    using ( XmlTransformation xt = new XmlTransformation( transformFileStream, null ) )
+                    {
+                        xt.Apply( doc );
+                        doc.Save( tempFileStream );
+                    }
 
-					cf.TransformOutFileFullPath = tempFileToSave;
-					cf.TransformOutFileName = (new FileInfo( tempFileToSave )).Name;
-				}
-			}
+                    cf.TransformOutFileFullPath = tempFileToSave;
+                    if ( IsS3Url( tempFileToSave ) )
+                    {
+                        cf.TransformOutFileName = tempFileToSave.Substring( tempFileToSave.LastIndexOf( '/' ) + 1 );
+                    }
+                    else
+                        cf.TransformOutFileName = (new FileInfo( tempFileToSave )).Name;
+                }
+            }
 			catch( Exception ex )
 			{
 				string msg = string.Format( "ExecuteXmlTransformation failed on: configFile:[{0}], transformFileName:[{1}]", cf.TransformFileOriginalName, cf.TransformFile );
                 OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
-		}
+            finally
+            {
+                transformFileOriginalStream.Close();
+                tempFileStream.Close();
+                transformFileStream.Close();
+            }
+        }
 
 		/// <summary>
 		/// ForEach ConfigFile transformed-in-place, copy the temp as the original.
@@ -403,8 +452,17 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					{
 						OnStepProgress( context,
 							string.Format( "Executing update on: BackupName:[{0}], OriginalName:[{1}]", cf.TransformOutFileFullPath, cf.TransformFileOriginalName ) );
-                        if (!_startInfo.IsDryRun)
-                            File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
+                        if ( !_startInfo.IsDryRun )
+                        {
+                            if ( IsS3Url( cf.TransformFileOriginalName ) )
+                            {
+                                string[] outUrl = SplitS3Url( cf.TransformOutFileFullPath );
+                                string[] origUrl = SplitS3Url( cf.TransformFileOriginalName );
+                                S3Client.MoveBucketObjects( outUrl[0], outUrl[1], origUrl[0], origUrl[1], false );
+                            }
+                            else
+                                File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
+                        }
 					}
 					catch( Exception ex )
 					{

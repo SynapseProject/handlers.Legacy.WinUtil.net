@@ -246,16 +246,20 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					if( string.IsNullOrWhiteSpace( cf.Name ) ) { cf.Name = string.Empty; }
 					string configFile = Path.GetLongPath( Utils.PathCombine( SourceDirectory, cf.Name ) );
 					string transformFile = Path.GetLongPath( Utils.PathCombine( SourceDirectory, cf.TransformFile ) );
+                    if ( wf.IsS3Url( SourceDirectory ) )
+                    {
+                        configFile = Utils.PathCombineS3( SourceDirectory, cf.Name );
+                        transformFile = Utils.PathCombineS3( SourceDirectory, cf.TransformFile );
 
-                    if ( wf.IsS3Url( configFile ) )
                         cf.NameExists = wf.S3Exists( configFile );
-                    else
-    					cf.NameExists = File.Exists( configFile );
-
-                    if ( wf.IsS3Url( transformFile ) )
                         cf.TransformFileExists = wf.S3Exists( transformFile );
+                    }
                     else
-    					cf.TransformFileExists = File.Exists( transformFile );
+                    {
+                        cf.NameExists = File.Exists( configFile );
+                        cf.TransformFileExists = File.Exists( transformFile );
+                    }
+
 					if( !cf.IsValid )
 					{
 						IsConfigTransformFileListValid = false;
