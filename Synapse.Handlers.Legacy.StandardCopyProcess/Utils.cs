@@ -90,6 +90,16 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                 return String.Empty;
         }
 
+        public static string GetDirectoryNameS3(string path)
+        {
+            return path.Substring( 0, path.LastIndexOf( '/' ) );
+        }
+
+        public static string GetFileNameS3(string path)
+        {
+            return path.Substring( path.LastIndexOf( '/' ) + 1 );
+        }
+
 		//http://stackoverflow.com/questions/1600962/displaying-the-build-date
 		//note: [assembly: AssemblyVersion("1.0.*")] // important: use wildcard for build and revision numbers!
 		public static string GetBuildDateVersion()

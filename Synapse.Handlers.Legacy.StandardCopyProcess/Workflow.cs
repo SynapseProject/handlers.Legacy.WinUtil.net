@@ -348,7 +348,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                     cf.TransformFileOriginalName = Utils.PathCombineS3( sourceFolderPath, cf.Name );
                     string[] tfOriginalUrl = SplitS3Url( cf.TransformFileOriginalName );
                     transformFileOriginalStream = S3Client.GetObjectStream( tfOriginalUrl[0], tfOriginalUrl[1], S3FileMode.Open, S3FileAccess.Read );
-                    tempFileToSave = Utils.PathCombineS3( cf.TransformFileOriginalName.Substring(0, cf.TransformFileOriginalName.LastIndexOf('/')), tempFileToSave );
+                    tempFileToSave = Utils.PathCombineS3( Utils.GetDirectoryNameS3(cf.TransformFileOriginalName), tempFileToSave );
                     string[] tempUrl = SplitS3Url( tempFileToSave );
                     tempFileStream = S3Client.GetObjectStream( tempUrl[0], tempUrl[1], S3FileMode.OpenOrCreate, S3FileAccess.Write );
                 }
@@ -402,7 +402,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                     cf.TransformOutFileFullPath = tempFileToSave;
                     if ( IsS3Url( tempFileToSave ) )
                     {
-                        cf.TransformOutFileName = tempFileToSave.Substring( tempFileToSave.LastIndexOf( '/' ) + 1 );
+                        cf.TransformOutFileName = Utils.GetFileNameS3(tempFileToSave);
                     }
                     else
                         cf.TransformOutFileName = (new FileInfo( tempFileToSave )).Name;
@@ -458,7 +458,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                             {
                                 string[] outUrl = SplitS3Url( cf.TransformOutFileFullPath );
                                 string[] origUrl = SplitS3Url( cf.TransformFileOriginalName );
-                                S3Client.MoveBucketObjects( outUrl[0], outUrl[1], origUrl[0], origUrl[1], false );
+                                S3Client.MoveBucketObjects( outUrl[0], outUrl[1], origUrl[0], origUrl[1], false, false, LogFileCopyProgress );
                             }
                             else
                                 File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
@@ -477,8 +477,19 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				{
 					try
 					{
-                        if (!_startInfo.IsDryRun)
-                            File.Delete( Utils.PathCombine( Path.GetDirectoryName( Utils.PathCombine( _wfp.SourceDirectory, cf.Name ) ), cf.TransformOutFileName ) );
+                        if ( !_startInfo.IsDryRun )
+                        {
+                            if (IsS3Url(_wfp.SourceDirectory))
+                            {
+                                string deleteFile = Utils.PathCombineS3( _wfp.SourceDirectory, cf.Name );
+                                deleteFile = Utils.GetDirectoryNameS3( deleteFile );
+                                deleteFile = Utils.PathCombineS3( deleteFile, cf.TransformOutFileName );
+                                string[] deleteFileUrl = SplitS3Url( deleteFile );
+                                S3Client.DeleteObject( deleteFileUrl[0], deleteFileUrl[1], LogFileCopyProgress );
+                            }
+                            else
+                                File.Delete( Utils.PathCombine( Path.GetDirectoryName( Utils.PathCombine( _wfp.SourceDirectory, cf.Name ) ), cf.TransformOutFileName ) );
+                        }
 					}
 					catch { /* If this fails, so be it - do nothing */ }
 				}
@@ -628,19 +639,38 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				string destinationConfigPath = Path.GetDirectoryName( destinationConfigName );
 				string destinationConfigBackupName = destinationConfigName + ".backup.original";
 				string transformedConfigTempName = Utils.PathCombine( destinationConfigPath, cf.TransformOutFileName );
+                if (IsS3Url(destination))
+                {
+                    destinationConfigName = Utils.PathCombineS3( destination, cf.Name );
+                    destinationConfigPath = Utils.GetDirectoryNameS3( destinationConfigName );
+                    destinationConfigBackupName = destinationConfigName + ".backup.original";
+                    transformedConfigTempName = Utils.PathCombineS3( destinationConfigPath, cf.TransformOutFileName );
+                }
 
                 if (!_startInfo.IsDryRun)
                 {
-                    try
+                    if ( IsS3Url( destination ) )
                     {
-                        //copy the untransformed "template" config to *.backup.original
-                        File.Move(destinationConfigName, destinationConfigBackupName, MoveOptions.ReplaceExisting);
+                        string[] destinationConfigUrl = SplitS3Url( destinationConfigName );
+                        string[] destinationConfigBackupUrl = SplitS3Url( destinationConfigBackupName );
+                        string[] transformedConfigTempUrl = SplitS3Url( transformedConfigTempName );
+
+                        S3Client.MoveBucketObjects( destinationConfigUrl[0], destinationConfigUrl[1], destinationConfigBackupUrl[0], destinationConfigBackupUrl[1], false, false, LogFileCopyProgress );
+                        S3Client.MoveBucketObjects( transformedConfigTempUrl[0], transformedConfigTempUrl[1], destinationConfigUrl[0], destinationConfigUrl[1], false, false, LogFileCopyProgress );
                     }
-                    catch { /* If this fails, so be it - do nothing */ }
+                    else
+                    {
+                        try
+                        {
+                            //copy the untransformed "template" config to *.backup.original
+                            File.Move( destinationConfigName, destinationConfigBackupName, MoveOptions.ReplaceExisting );
+                        }
+                        catch { /* If this fails, so be it - do nothing */ }
 
 
-                    //copy the transformed file over the untransformed "template" config
-                    File.Move(transformedConfigTempName, destinationConfigName, MoveOptions.ReplaceExisting);
+                        //copy the transformed file over the untransformed "template" config
+                        File.Move( transformedConfigTempName, destinationConfigName, MoveOptions.ReplaceExisting );
+                    }
                 }
 
 				OnProgress( ctx, string.Format( "Overwrote config file: {0}  [with]  {1}", destinationConfigName, transformedConfigTempName ),
@@ -1047,7 +1077,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                     if ( IsS3Url(destination) )
                     {
                         string[] destinationUrl = SplitS3Url( destination );
-                        S3Client.MoveBucketObjects( sourceUrl[0], sourceUrl[1], destinationUrl[0], destinationUrl[1], false, LogFileCopyProgress );
+                        S3Client.MoveBucketObjects( sourceUrl[0], sourceUrl[1], destinationUrl[0], destinationUrl[1], false, true, LogFileCopyProgress );
                     }
                     else
                     {

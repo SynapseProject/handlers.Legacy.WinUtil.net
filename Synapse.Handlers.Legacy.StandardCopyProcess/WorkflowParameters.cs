@@ -125,7 +125,12 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
             #region IsSourceDirectoryValid
             if ( !String.IsNullOrWhiteSpace( DeploymentRoot ) )
-                SourceDirectory = Utils.PathCombine( DeploymentRoot, SourceDirectory );
+            {
+                if ( wf.IsS3Url( DeploymentRoot ) )
+                    SourceDirectory = Utils.PathCombineS3( DeploymentRoot, SourceDirectory );
+                else
+                    SourceDirectory = Utils.PathCombine( DeploymentRoot, SourceDirectory );
+            }
 
             if ( wf.IsS3Url( SourceDirectory ) )
                 IsSourceDirectoryValid = wf.S3Exists( SourceDirectory );
