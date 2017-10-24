@@ -12,6 +12,9 @@ using Synapse.Core;
 using Synapse.Handlers.Legacy.WinCore;
 using System.Security.Cryptography.Utility;
 
+using Synapse.Aws.Core;
+using Amazon;
+
 using settings = Synapse.Handlers.Legacy.StandardCopyProcess.Properties.Settings;
 
 namespace Synapse.Handlers.Legacy.StandardCopyProcess
@@ -20,6 +23,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 	{
 		WorkflowParameters _wfp = null;
         HandlerStartInfo _startInfo = null;
+        S3Client S3Client = null;
         public Action<string, string, LogLevel, Exception> OnLogMessage;
         public Func<string, string, StatusType, long, int, bool, Exception, bool> OnProgress;
 
@@ -78,7 +82,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
                     {
                         if (_wfp.TruncateNextEnvironmentDirectory)
                         {
-                            DeleteFolder(_wfp.NextEnvironmentSourceDirectory, true);
+                            if (IsS3Url(_wfp.NextEnvironmentSourceDirectory))
+                            {
+                                string[] nextEnvSrcDirUrl = SplitS3Url( _wfp.NextEnvironmentSourceDirectory );
+                                S3Client.DeleteBucketObjects( nextEnvSrcDirUrl[0], nextEnvSrcDirUrl[1], LogFileCopyProgress );
+                            }
+                            else
+                                DeleteFolder(_wfp.NextEnvironmentSourceDirectory, true);
                         }
 
                         MoveFolderContent(_wfp.SourceDirectory, _wfp.NextEnvironmentSourceDirectory);
@@ -105,6 +115,11 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
         }
 
+        public void LogFileCopyProgress(string context, string message)
+        {
+            OnLogMessage( context, message, LogLevel.Info, null );
+        }
+
         #region Validate Parameters
         bool ValidateParameters()
 		{
@@ -113,7 +128,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			OnStepProgress( context, Utils.GetHeaderMessage( "Begin [PrepareAndValidate]" ) );
 
-			_wfp.PrepareAndValidate();
+			_wfp.PrepareAndValidate(this);
 
 			OnStepProgress( context, Utils.GetMessagePadRight( "SourceDirectory", _wfp.SourceDirectory, padding ) );
 			OnStepProgress( context, Utils.GetMessagePadRight( "IsSourceDirectoryValid", _wfp.IsSourceDirectoryValid, padding ) );
@@ -167,7 +182,15 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			Dictionary<string, string> backupTargets = new Dictionary<string, string>();
 
-			string[] files = Directory.GetFiles( _wfp.SourceDirectory, "*", io.SearchOption.AllDirectories );
+            string[] files = null;
+
+            if ( IsS3Url( _wfp.SourceDirectory ) )
+            {
+                string[] url = SplitS3Url( _wfp.SourceDirectory );
+                files = S3Client.GetFiles( url[0], url[1] );
+            }
+            else
+                files = Directory.GetFiles( _wfp.SourceDirectory, "*", io.SearchOption.AllDirectories );
 
 			if( _wfp.HasBackupRemoteDestination && _wfp.IsBackupRemoteDestinationValid )
 			{
@@ -214,26 +237,56 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 			foreach( string file in files )
 			{
 				string unrootedFile = file.Replace( _wfp.SourceDirectory, string.Empty );
-				string sourceFile = Utils.PathCombine( targetDestination, unrootedFile );
-				string destinationFile = Utils.PathCombine( backupDestination, unrootedFile );
-				if( File.Exists( sourceFile ) )
-				{
-					string destDir = Path.GetDirectoryName( destinationFile );
-                    if (_startInfo.IsDryRun)
-                        OnProgress("DryRun:BackupContent", "Backing Up File : " + sourceFile + " To " + destinationFile, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
-                    else
-                    {
-                        if (!Directory.Exists(destDir))
-                        {
-                            Directory.CreateDirectory(destDir);
-                        }
+                string sourceFile = Utils.PathCombine( targetDestination, unrootedFile.Replace( "/", "\\" ));
+                if ( IsS3Url( targetDestination ) )
+                    sourceFile = Utils.PathCombineS3( targetDestination, unrootedFile );
+				string destinationFile = Utils.PathCombine( backupDestination, unrootedFile.Replace( "/", "\\" ) );
+                if ( IsS3Url( backupDestination) )
+                    destinationFile = Utils.PathCombineS3( backupDestination, unrootedFile );
+                string sourceDirectoryUrl = sourceFile.Replace( unrootedFile, string.Empty );
 
-                        //CopyOptions.None->Allow overwrite if file exists in backup destination
-                        //true->preserveDates
-                        File.Copy(sourceFile, destinationFile,
-                            CopyOptions.None, true, CopyMoveProgressHandler, null, PathFormat.FullPath);
+                if ( _startInfo.IsDryRun )
+                    OnProgress( "DryRun:BackupContent", "Backing Up File : " + sourceFile + " To " + destinationFile, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null );
+                else if ( IsS3Url( sourceFile ) )
+                {
+                    string[] sourceUrl = SplitS3Url( sourceFile );
+                    if ( S3Client.Exists(sourceUrl[0], sourceUrl[1] ))
+                    {
+                        if ( IsS3Url( destinationFile ) )
+                        {
+                            string[] destUrl = SplitS3Url( destinationFile );
+                            S3Client.CopyObject( sourceUrl[0], sourceUrl[1], destUrl[0], destUrl[1], sourceUrl[1], LogFileCopyProgress );
+                        }
+                        else
+                        {
+                            S3Client.CopyObjectToLocal( sourceUrl[0], sourceUrl[1], destinationFile, sourceUrl[1], LogFileCopyProgress );
+                        }
                     }
-				}
+                }
+                else
+                {
+                    if ( File.Exists( sourceFile ) )
+                    {
+                        if ( IsS3Url( destinationFile ) )
+                        {
+                            string[] destUrl = SplitS3Url( destinationFile );
+                            S3Client.UploadToBucket( sourceFile, destUrl[0], destUrl[1].Replace(unrootedFile, string.Empty), sourceDirectoryUrl, LogFileCopyProgress );
+                        }
+                        else
+                        {
+                            string destDir = Path.GetDirectoryName( destinationFile );
+                            if ( !Directory.Exists( destDir ) )
+                            {
+                                Directory.CreateDirectory( destDir );
+                            }
+
+                            //CopyOptions.None->Allow overwrite if file exists in backup destination
+                            //true->preserveDates
+                            File.Copy( sourceFile, destinationFile,
+                                CopyOptions.None, true, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                        }
+                    }
+                }
 			}
 		}
 		#endregion
@@ -284,41 +337,90 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			string tempFileToSave = Path.GetRandomFileName();
 
-			try
-			{
-				cf.TransformFileOriginalName = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.Name ) );
-				tempFileToSave = Utils.PathCombine( Path.GetDirectoryName( cf.TransformFileOriginalName ), tempFileToSave );
+            System.IO.Stream transformFileOriginalStream = null;
+            System.IO.Stream tempFileStream = null;
+            System.IO.Stream transformFileStream = null;
 
-				//execute the transform
-				string transformFile = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.TransformFile ) );
-				using( XmlTransformableDocument doc = new XmlTransformableDocument() )
+            try
+            {
+                if ( IsS3Url( sourceFolderPath ) )
+                {
+                    cf.TransformFileOriginalName = Utils.PathCombineS3( sourceFolderPath, cf.Name );
+                    string[] tfOriginalUrl = SplitS3Url( cf.TransformFileOriginalName );
+                    transformFileOriginalStream = S3Client.GetObjectStream( tfOriginalUrl[0], tfOriginalUrl[1], S3FileMode.Open, S3FileAccess.Read );
+                    tempFileToSave = Utils.PathCombineS3( Utils.GetDirectoryNameS3(cf.TransformFileOriginalName), tempFileToSave );
+                    string[] tempUrl = SplitS3Url( tempFileToSave );
+                    tempFileStream = S3Client.GetObjectStream( tempUrl[0], tempUrl[1], S3FileMode.OpenOrCreate, S3FileAccess.Write );
+                }
+                else
+                {
+                    cf.TransformFileOriginalName = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.Name ) );
+                    transformFileOriginalStream = File.Open( cf.TransformFileOriginalName, System.IO.FileMode.Open, System.IO.FileAccess.Read );
+                    tempFileToSave = Utils.PathCombine( Path.GetDirectoryName( cf.TransformFileOriginalName ), tempFileToSave );
+                    tempFileStream = File.Open( tempFileToSave, io.FileMode.OpenOrCreate, io.FileAccess.Write );
+                }
+
+                //execute the transform
+                string transformFile = null;
+                if ( IsS3Url( sourceFolderPath ) )
+                {
+                    // Transform File Must Be Open Read/Write, Which S3 Does Not Support.
+                    // Read S3 Stream Into A MemoryStream And Use That Instead.
+                    transformFile = Utils.PathCombineS3( sourceFolderPath, cf.TransformFile );
+                    string[] tfUrl = SplitS3Url( transformFile );
+                    System.IO.Stream xformContent = S3Client.GetObjectStream( tfUrl[0], tfUrl[1], S3FileMode.OpenOrCreate, S3FileAccess.Read );
+                    System.IO.MemoryStream ms = new System.IO.MemoryStream();
+                    xformContent.CopyTo( ms );
+                    xformContent.Close();
+
+                    ms.Position = 0;
+                    transformFileStream = ms;
+                }
+                else
+                {
+                    transformFile = Path.GetLongFrom83ShortPath( Utils.PathCombine( sourceFolderPath, cf.TransformFile ) );
+                    transformFileStream = File.Open( transformFile, System.IO.FileMode.OpenOrCreate, System.IO.FileAccess.ReadWrite );
+                }
+
+                using ( XmlTransformableDocument doc = new XmlTransformableDocument() )
 				{
 					doc.PreserveWhitespace = true;
 
-					using( io.StreamReader sr = new io.StreamReader( cf.TransformFileOriginalName ) )
+					using( io.StreamReader sr = new io.StreamReader( transformFileOriginalStream ) )
 					{
 						doc.Load( sr );
 					}
 
-					//doc.Load(cf.TransformFileOriginalName);
+                    //doc.Load(cf.TransformFileOriginalName);
 
-					using( XmlTransformation xt = new XmlTransformation( transformFile ) )
-					{
-						xt.Apply( doc );
-						doc.Save( tempFileToSave );
-					}
+                    using ( XmlTransformation xt = new XmlTransformation( transformFileStream, null ) )
+                    {
+                        xt.Apply( doc );
+                        doc.Save( tempFileStream );
+                    }
 
-					cf.TransformOutFileFullPath = tempFileToSave;
-					cf.TransformOutFileName = (new FileInfo( tempFileToSave )).Name;
-				}
-			}
+                    cf.TransformOutFileFullPath = tempFileToSave;
+                    if ( IsS3Url( tempFileToSave ) )
+                    {
+                        cf.TransformOutFileName = Utils.GetFileNameS3(tempFileToSave);
+                    }
+                    else
+                        cf.TransformOutFileName = (new FileInfo( tempFileToSave )).Name;
+                }
+            }
 			catch( Exception ex )
 			{
 				string msg = string.Format( "ExecuteXmlTransformation failed on: configFile:[{0}], transformFileName:[{1}]", cf.TransformFileOriginalName, cf.TransformFile );
                 OnProgress(msg, ex.Message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, ex);
 				throw ex;
 			}
-		}
+            finally
+            {
+                transformFileOriginalStream.Close();
+                tempFileStream.Close();
+                transformFileStream.Close();
+            }
+        }
 
 		/// <summary>
 		/// ForEach ConfigFile transformed-in-place, copy the temp as the original.
@@ -350,8 +452,17 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 					{
 						OnStepProgress( context,
 							string.Format( "Executing update on: BackupName:[{0}], OriginalName:[{1}]", cf.TransformOutFileFullPath, cf.TransformFileOriginalName ) );
-                        if (!_startInfo.IsDryRun)
-                            File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
+                        if ( !_startInfo.IsDryRun )
+                        {
+                            if ( IsS3Url( cf.TransformFileOriginalName ) )
+                            {
+                                string[] outUrl = SplitS3Url( cf.TransformOutFileFullPath );
+                                string[] origUrl = SplitS3Url( cf.TransformFileOriginalName );
+                                S3Client.MoveBucketObjects( outUrl[0], outUrl[1], origUrl[0], origUrl[1], false, false, LogFileCopyProgress );
+                            }
+                            else
+                                File.Move( cf.TransformOutFileFullPath, cf.TransformFileOriginalName, MoveOptions.ReplaceExisting );
+                        }
 					}
 					catch( Exception ex )
 					{
@@ -366,8 +477,19 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				{
 					try
 					{
-                        if (!_startInfo.IsDryRun)
-                            File.Delete( Utils.PathCombine( Path.GetDirectoryName( Utils.PathCombine( _wfp.SourceDirectory, cf.Name ) ), cf.TransformOutFileName ) );
+                        if ( !_startInfo.IsDryRun )
+                        {
+                            if (IsS3Url(_wfp.SourceDirectory))
+                            {
+                                string deleteFile = Utils.PathCombineS3( _wfp.SourceDirectory, cf.Name );
+                                deleteFile = Utils.GetDirectoryNameS3( deleteFile );
+                                deleteFile = Utils.PathCombineS3( deleteFile, cf.TransformOutFileName );
+                                string[] deleteFileUrl = SplitS3Url( deleteFile );
+                                S3Client.DeleteObject( deleteFileUrl[0], deleteFileUrl[1], LogFileCopyProgress );
+                            }
+                            else
+                                File.Delete( Utils.PathCombine( Path.GetDirectoryName( Utils.PathCombine( _wfp.SourceDirectory, cf.Name ) ), cf.TransformOutFileName ) );
+                        }
 					}
 					catch { /* If this fails, so be it - do nothing */ }
 				}
@@ -455,7 +577,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 						TruncateTargetDirectory( serverDest );
 					}
 					CopyFolder( _wfp.SourceDirectory, serverDest );
-					RenameConfigsAtTartget( serverDest );
+					RenameConfigsAtTarget( serverDest );
 					if( _wfp.DeleteManifest.HasPaths )
 					{
 						AggregateException dmEx = DeleteManifestPathsContent( serverDest );
@@ -473,7 +595,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 						TruncateTargetDirectory( _wfp.TargetRemoteDestination );
 					}
 					CopyFolder( _wfp.SourceDirectory, _wfp.TargetRemoteDestination );
-					RenameConfigsAtTartget( _wfp.TargetRemoteDestination );
+					RenameConfigsAtTarget( _wfp.TargetRemoteDestination );
 					if( _wfp.DeleteManifest.HasPaths )
 					{
 						AggregateException dmEx = DeleteManifestPathsContent( _wfp.TargetRemoteDestination );
@@ -501,7 +623,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		/// </summary>
 		/// <param name="source">The source directory path.</param>
 		/// <param name="destination">The destination directory path.</param>
-		void RenameConfigsAtTartget(string destination)
+		void RenameConfigsAtTarget(string destination)
 		{
             String ctx = "UpdateConfigsAtTarget";
             if (_startInfo.IsDryRun)
@@ -517,19 +639,38 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				string destinationConfigPath = Path.GetDirectoryName( destinationConfigName );
 				string destinationConfigBackupName = destinationConfigName + ".backup.original";
 				string transformedConfigTempName = Utils.PathCombine( destinationConfigPath, cf.TransformOutFileName );
+                if (IsS3Url(destination))
+                {
+                    destinationConfigName = Utils.PathCombineS3( destination, cf.Name );
+                    destinationConfigPath = Utils.GetDirectoryNameS3( destinationConfigName );
+                    destinationConfigBackupName = destinationConfigName + ".backup.original";
+                    transformedConfigTempName = Utils.PathCombineS3( destinationConfigPath, cf.TransformOutFileName );
+                }
 
                 if (!_startInfo.IsDryRun)
                 {
-                    try
+                    if ( IsS3Url( destination ) )
                     {
-                        //copy the untransformed "template" config to *.backup.original
-                        File.Move(destinationConfigName, destinationConfigBackupName, MoveOptions.ReplaceExisting);
+                        string[] destinationConfigUrl = SplitS3Url( destinationConfigName );
+                        string[] destinationConfigBackupUrl = SplitS3Url( destinationConfigBackupName );
+                        string[] transformedConfigTempUrl = SplitS3Url( transformedConfigTempName );
+
+                        S3Client.MoveBucketObjects( destinationConfigUrl[0], destinationConfigUrl[1], destinationConfigBackupUrl[0], destinationConfigBackupUrl[1], false, false, LogFileCopyProgress );
+                        S3Client.MoveBucketObjects( transformedConfigTempUrl[0], transformedConfigTempUrl[1], destinationConfigUrl[0], destinationConfigUrl[1], false, false, LogFileCopyProgress );
                     }
-                    catch { /* If this fails, so be it - do nothing */ }
+                    else
+                    {
+                        try
+                        {
+                            //copy the untransformed "template" config to *.backup.original
+                            File.Move( destinationConfigName, destinationConfigBackupName, MoveOptions.ReplaceExisting );
+                        }
+                        catch { /* If this fails, so be it - do nothing */ }
 
 
-                    //copy the transformed file over the untransformed "template" config
-                    File.Move(transformedConfigTempName, destinationConfigName, MoveOptions.ReplaceExisting);
+                        //copy the transformed file over the untransformed "template" config
+                        File.Move( transformedConfigTempName, destinationConfigName, MoveOptions.ReplaceExisting );
+                    }
                 }
 
 				OnProgress( ctx, string.Format( "Overwrote config file: {0}  [with]  {1}", destinationConfigName, transformedConfigTempName ),
@@ -717,7 +858,13 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
 			try
 			{
-				DeleteFolder( targetPath, true );
+                if ( IsS3Url( targetPath ) )
+                {
+                    string[] url = SplitS3Url( targetPath );
+                    S3Client.DeleteBucketObjects( url[0], url[1], LogFileCopyProgress );
+                }
+                else
+    				DeleteFolder( targetPath, true );
 			}
 			catch( Exception ex )
 			{
@@ -750,23 +897,32 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 				{
 					if( !string.IsNullOrEmpty( path.Trim() ) )
 					{
-						relPath = path;
-						fullPath = Utils.PathCombine( rootPath, path );
+                        if ( IsS3Url( rootPath ) )
+                        {
+                            fullPath = Utils.PathCombineS3( rootPath, path );
+                            string[] url = SplitS3Url( fullPath );
+                            S3Client.DeleteObject( url[0], url[1] );
+                        }
+                        else
+                        {
+                            relPath = path;
+                            fullPath = Utils.PathCombine( rootPath, path );
 
-						bool isDir =
-							(File.GetAttributes( fullPath, PathFormat.FullPath ) & io.FileAttributes.Directory) ==
-							io.FileAttributes.Directory;
-						if( isDir )
-						{
-                            if (!_startInfo.IsDryRun)
-    							DeleteFolder( fullPath, false );
-						}
-						else
-						{
-							if (!_startInfo.IsDryRun)
-                                //true->ignoreReadOnly
-							    File.Delete( fullPath, true, PathFormat.FullPath );
-						}
+                            bool isDir =
+                                (File.GetAttributes( fullPath, PathFormat.FullPath ) & io.FileAttributes.Directory) ==
+                                io.FileAttributes.Directory;
+                            if ( isDir )
+                            {
+                                if ( !_startInfo.IsDryRun )
+                                    DeleteFolder( fullPath, false );
+                            }
+                            else
+                            {
+                                if ( !_startInfo.IsDryRun )
+                                    //true->ignoreReadOnly
+                                    File.Delete( fullPath, true, PathFormat.FullPath );
+                            }
+                        }
 
 						OnStepProgress( context, string.Format( "Deleted: [{0}]", fullPath ) );
 					}
@@ -853,14 +1009,33 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
 			try
 			{
-                if (_startInfo.IsDryRun)
+                if ( _startInfo.IsDryRun )
                 {
-                    OnStepProgress("DryRun:CopyFolder", "DryRun Flag Is Set.  No Files Will Be Copied.");
-                    OnStepProgress("DryRun:CopyFolder", "Copying From : " + source + " To " + destination);
+                    OnStepProgress( "DryRun:CopyFolder", "DryRun Flag Is Set.  No Files Will Be Copied." );
+                    OnStepProgress( "DryRun:CopyFolder", "Copying From : " + source + " To " + destination );
+                }
+                else if ( IsS3Url( source ) )
+                {
+                    string[] url = SplitS3Url( source );
+                    if ( IsS3Url( destination ) )
+                    {
+                        string[] destUrl = SplitS3Url( destination );
+                        S3Client.CopyBucketObjects( url[0], url[1], destUrl[0], destUrl[1], false, LogFileCopyProgress );
+                    }
+                    else
+                        S3Client.CopyBucketObjectsToLocal( url[0], destination, url[1], false, LogFileCopyProgress );
                 }
                 else
-                    //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-                    Directory.Copy(source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath);
+                {
+                    if ( IsS3Url( destination ) )
+                    {
+                        string[] destUrl = SplitS3Url( destination );
+                        S3Client.UploadFilesToBucket( source, destUrl[0], destUrl[1], LogFileCopyProgress );
+                    }
+                    else
+                        //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
+                        Directory.Copy( source, destination, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                }
 			}
 			catch( Exception ex )
 			{
@@ -896,47 +1071,70 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 
 			try
 			{
-
-				string[] dirs = Directory.GetDirectories( source );
-				foreach( string dir in dirs )
-				{
-					string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
-					string dst = Utils.PathCombine( destination, folder );
-
-                    if (_startInfo.IsDryRun)
-                        OnStepProgress(context, "Moving Folder : " + dir + " To " + dst);
+                if ( IsS3Url( source ) )
+                {
+                    string[] sourceUrl = SplitS3Url( source );
+                    if ( IsS3Url(destination) )
+                    {
+                        string[] destinationUrl = SplitS3Url( destination );
+                        S3Client.MoveBucketObjects( sourceUrl[0], sourceUrl[1], destinationUrl[0], destinationUrl[1], false, true, LogFileCopyProgress );
+                    }
                     else
                     {
-                        //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
-                        Directory.Copy(dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath);
-                        //true->recursive, true->ignoreReadOnly
-                        Directory.Delete(dir, true, true, PathFormat.FullPath);
-
-                        #region note from Steve: do not switch back to Directory.Move
-                        //note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
-                        //		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
-                        //		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
-                        //		as a Copy + Delete.  Original implementation was:
-                        //Directory.Move( dir, dst,
-                        //	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                        S3Client.MoveBucketObjectsToLocal( sourceUrl[0], destination, sourceUrl[1], false, LogFileCopyProgress );
                     }
-					#endregion
-				}
-
-				string[] files = Directory.GetFiles( source );
-				foreach( string file in files )
-				{
-					string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
-                    if (_startInfo.IsDryRun)
-                        OnStepProgress(context, "Moving File : " + file + " To " + dst);
+                }
+                else
+                {
+                    if ( IsS3Url( destination ) )
+                    {
+                        string[] destinationUrl = SplitS3Url( destination );
+                        S3Client.MoveFilesToBucket( source, destinationUrl[0], destinationUrl[1], LogFileCopyProgress );
+                    }
                     else
                     {
-                        File.Move(file, dst,
-                        MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath);
-                    }
-				}
+                        string[] dirs = Directory.GetDirectories( source );
+                        foreach ( string dir in dirs )
+                        {
+                            string folder = Path.GetDirectoryNameWithoutRoot( dir + @"\\" );
+                            string dst = Utils.PathCombine( destination, folder );
 
-				clock.Stop();
+                            if ( _startInfo.IsDryRun )
+                                OnStepProgress( context, "Moving Folder : " + dir + " To " + dst );
+                            else
+                            {
+                                //CopyOptions.None overrides CopyOptions.FailIfExists, meaning, overwrite any existing files
+                                Directory.Copy( dir, dst, CopyOptions.None, CopyMoveProgressHandler, null, PathFormat.FullPath );
+                                //true->recursive, true->ignoreReadOnly
+                                Directory.Delete( dir, true, true, PathFormat.FullPath );
+
+                                #region note from Steve: do not switch back to Directory.Move
+                                //note: Directory.Move with MoveOptions.ReplaceExisting is implemented as a folder "overwrite" within
+                                //		Alphaleonis, where the destinationPath is first _deleted_, then the source is copied to dest.
+                                //		Deliverance specifications for MoveToNext are to implement a Directory _merge_, so I re-coded
+                                //		as a Copy + Delete.  Original implementation was:
+                                //Directory.Move( dir, dst,
+                                //	MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                            }
+                            #endregion
+                        }
+
+                        string[] files = Directory.GetFiles( source );
+                        foreach ( string file in files )
+                        {
+                            string dst = Utils.PathCombine( destination, Path.GetFileName( file ) );
+                            if ( _startInfo.IsDryRun )
+                                OnStepProgress( context, "Moving File : " + file + " To " + dst );
+                            else
+                            {
+                                File.Move( file, dst,
+                                MoveOptions.ReplaceExisting | MoveOptions.WriteThrough, PathFormat.FullPath );
+                            }
+                        }
+                    }
+                }
+
+                clock.Stop();
 				msg = Utils.GetHeaderMessage( string.Format( "End move for: [{0}  [to]  {1}]: Total Execution Time: {2}",
 					source, destination, clock.ElapsedSeconds() ) );
 				OnStepFinished( context, msg );
@@ -987,6 +1185,52 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
 		{
             OnProgress(context, message, StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null);
 		}
-		#endregion
-	}
+        #endregion
+
+        #region S3 Functions
+
+        public bool UsesAwsS3()
+        {
+            return (S3Client != null);
+        }
+
+        public bool IsS3Url(string url)
+        {
+            return url.StartsWith( @"s3://", StringComparison.OrdinalIgnoreCase );
+        }
+
+        public bool S3Exists(string s3Path)
+        {
+            string[] url = SplitS3Url( s3Path );
+            return S3Client.Exists( url[0], url[1] );
+        }
+
+        public string[] S3ReadAllLines(string s3Path)
+        {
+            string[] url = SplitS3Url( s3Path );
+            return S3Client.ReadAllLines( url[0], url[1] );
+        }
+
+        public string[] SplitS3Url(string url)
+        {
+            if ( url.StartsWith( @"s3://", StringComparison.OrdinalIgnoreCase ) )
+            {
+                char[] seperators = { '/', '\\' };
+                String s3Path = url.Substring( 5 );
+                return s3Path.Split( seperators, 2 );
+            }
+            else
+                return null;
+        }
+
+        public void InitializeS3Client(string accessKey, string secretKey, RegionEndpoint endPoint)
+        {
+            if ( String.IsNullOrWhiteSpace( accessKey ) || String.IsNullOrWhiteSpace( secretKey ) )
+                this.S3Client = new S3Client( endPoint );
+            else
+                this.S3Client = new S3Client( accessKey, secretKey, endPoint );
+        }
+
+        #endregion
+    }
 }
