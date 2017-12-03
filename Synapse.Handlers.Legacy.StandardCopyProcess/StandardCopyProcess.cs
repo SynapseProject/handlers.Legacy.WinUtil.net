@@ -50,16 +50,17 @@ public class StandardCopyProcessHandler : HandlerRuntimeBase
 
     public override object GetParametersInstance()
     {
-        WorkflowParameters wfp = new WorkflowParameters();
+        WorkflowParameters wfp = new WorkflowParameters
+        {
+            DeploymentRoot = @"C:\Temp",
+            SourceDirectory = @"Source",
+            NextEnvironmentSourceDirectory = @"NextSource",
+            TruncateNextEnvironmentDirectory = true,
+            TargetRemoteDestination = @"\\server\share\dir1\dir2\target",
+            BackupRemoteDestination = @"BackupRemote",
 
-        wfp.DeploymentRoot = @"C:\Temp";
-        wfp.SourceDirectory = @"Source";
-        wfp.NextEnvironmentSourceDirectory = @"NextSource";
-        wfp.TruncateNextEnvironmentDirectory = true;
-        wfp.TargetRemoteDestination = @"\\server\share\dir1\dir2\target";
-        wfp.BackupRemoteDestination = @"BackupRemote";
-
-        wfp.Servers = new List<string>();
+            Servers = new List<string>()
+        };
         wfp.Servers.Add( "localhost" );
 
         wfp.TargetServerDestination = @"C:\Temp\Target";
@@ -71,36 +72,41 @@ public class StandardCopyProcessHandler : HandlerRuntimeBase
         wfp.DeleteManifest.TreatExceptionsAsWarnings = true;
 
         wfp.Services = new List<Service>();
-        Service svc = new Service();
-        svc.Name = @"MyServiceName";
-        svc.StopTimeoutToTerminate = 30000;
-        svc.StartTimeoutToMonitor = 60000;
-        svc.StartModeOnStart = Synapse.Handlers.Legacy.WinCore.ServiceStartMode.Automatic;
-        svc.StartModeOnStop = Synapse.Handlers.Legacy.WinCore.ServiceStartMode.Disabled;
-        svc.StartService = true;
-        svc.Path = @"C:\Temp\MyService.exe";
-        svc.UserName = @"MyUserName";
-        svc.Password = @"MyPassword";
-        svc.Reprovision = true;
-        svc.Parameters = "-p1 My -p2 Service -p3 Parameters";
+        Service svc = new Service
+        {
+            Name = @"MyServiceName",
+            StopTimeoutToTerminate = 30000,
+            StartTimeoutToMonitor = 60000,
+            StartModeOnStart = Synapse.Handlers.Legacy.WinCore.ServiceStartMode.Automatic,
+            StartModeOnStop = Synapse.Handlers.Legacy.WinCore.ServiceStartMode.Disabled,
+            StartService = true,
+            Path = @"C:\Temp\MyService.exe",
+            UserName = @"MyUserName",
+            Password = @"MyPassword",
+            Reprovision = true,
+            Parameters = "-p1 My -p2 Service -p3 Parameters"
+        };
         wfp.Services.Add( svc );
 
         wfp.AppPools = new List<AppPool>();
-        AppPool pool = new AppPool();
-        pool.Name = @"MyAppPool";
-        pool.StartPool = true;
+        AppPool pool = new AppPool
+        {
+            Name = @"MyAppPool",
+            StartPool = true
+        };
         wfp.AppPools.Add( pool );
 
         wfp.ConfigFiles = new List<ConfigFile>();
-        ConfigFile config = new ConfigFile();
-        config.Name = @"MyConfigFile.txt";
-        config.TransformFile = @"MyTransformFile.xml";
-        config.TransformInPlace = false;
+        ConfigFile config = new ConfigFile
+        {
+            Name = @"MyConfigFile.txt",
+            TransformFile = @"MyTransformFile.xml",
+            TransformInPlace = false
+        };
         wfp.ConfigFiles.Add( config );
 
-        String xml = wfp.Serialize( false );
-        xml = xml.Substring( xml.IndexOf( "<" ) );
+        string xml = wfp.Serialize( indented: true );
+        xml = xml.Replace( "\r\n", "\n" ); //this is only to make the XML pretty, like me
         return xml;
-
     }
 }
