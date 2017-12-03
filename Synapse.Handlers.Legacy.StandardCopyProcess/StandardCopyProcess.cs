@@ -59,17 +59,19 @@ public class StandardCopyProcessHandler : HandlerRuntimeBase
             TargetRemoteDestination = @"\\server\share\dir1\dir2\target",
             BackupRemoteDestination = @"BackupRemote",
 
+            TargetServerDestination = @"C:\Temp\Target",
+            BackupServerDestination = @"BackupServer",
+            TruncateTargetDirectory = false,
+
             Servers = new List<string>()
         };
         wfp.Servers.Add( "localhost" );
 
-        wfp.TargetServerDestination = @"C:\Temp\Target";
-        wfp.BackupServerDestination = @"BackupServer";
-        wfp.TruncateTargetDirectory = false;
-
-        wfp.DeleteManifest = new DeleteManifestFile();
-        wfp.DeleteManifest.FileName = @"C:\Temp\DeleteFileManifest\DeleteMe.txt";
-        wfp.DeleteManifest.TreatExceptionsAsWarnings = true;
+        wfp.DeleteManifest = new DeleteManifestFile
+        {
+            FileName = @"C:\Temp\DeleteFileManifest\DeleteMe.txt",
+            TreatExceptionsAsWarnings = true
+        };
 
         wfp.Services = new List<Service>();
         Service svc = new Service
