@@ -14,7 +14,7 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
     public class HandlerConfig
     {
         [XmlElement]
-        public AwsConfig Aws { get; set; } = new AwsConfig();
+        public AwsConfig Aws { get; set; }
     }
 
     public class AwsConfig

@@ -841,9 +841,8 @@ namespace Synapse.Handlers.Legacy.StandardCopyProcess
             if( userData != null )
             {
                 string[] files = userData.ToString().Split( '|' );
-                OnProgress( "CopyMoveProgress",
-                    string.Format( "Copied file: {0}  [to]  {1}", files[0], files[1] ),
-                    StatusType.Running, _startInfo.InstanceId, _cheapSequence++, false, null );
+                OnStepProgress( "CopyMoveProgress",
+                    string.Format( "Copied file: {0}  [to]  {1}", files[0], files[1] ) );
             }
 
             return CopyMoveProgressResult.Continue;
