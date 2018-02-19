@@ -73,9 +73,8 @@
     <Reference Include="Synapse.Aws.Core, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\Synapse.Aws.Core.0.1.17340.0-alpha\lib\net452\Synapse.Aws.Core.dll</HintPath>
     </Reference>
-    <Reference Include="Synapse.Core, Version=0.1.0.0, Culture=neutral, PublicKeyToken=a6de1cc56b73f982, processorArchitecture=MSIL">
-      <HintPath>..\packages\Synapse.Core.Signed.0.1.17218.0-beta\lib\net45\Synapse.Core.dll</HintPath>
-      <Private>True</Private>
+    <Reference Include="Synapse.Core, Version=1.0.0.0, Culture=neutral, PublicKeyToken=a6de1cc56b73f982, processorArchitecture=MSIL">
+      <HintPath>..\packages\Synapse.Core.Signed.1.0.18048\lib\net45\Synapse.Core.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
